@@ -1,5 +1,18 @@
-from robot_systems.robot import HamBot
+import sys
+from HamBot.src.robot_systems import HamBot
+sys.path.append
 import time
+import math
+
+# kinematics calculations
+# using 50 rpms
+AxisLength = 4
+WheelDiameter = 2.6 #in
+WheelRadius = WheelDiameter /2
+RPM = 50
+LeftWheelRadius = (RPM * 2 * math.pi) / 60
+
+#robot movement
 Bot = HamBot(lidar_enabled = False, camera_enabled = False)
 end = 0
 if  end != 7:
