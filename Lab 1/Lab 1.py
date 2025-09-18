@@ -5,7 +5,10 @@ import time
 import math
 def StraightLineFormula(x1, x2, y1, y2):
     #the starting point is x1, y1
-    math.sqrt(math.pow(x2-x1, 2) + math.pow(y2 - y1, 2) )
+    #the next point is x2, y2
+    return math.sqrt(math.pow(x2-x1, 2) + math.pow(y2 - y1, 2) )
+def Waypoints():
+    hey = 0
 # kinematics calculations
 # using 50 rpms
 AxisLength = 4
@@ -17,7 +20,7 @@ RightWheelRadius = 0
 TotalPathLength = 0
 TotalTravelTime = 0
 #use time.time()  0r time.perf_counter for the travel time
-p0 = [2.0,-2.0,math.pi],
+p0 = [2.0,-2.0,math.pi]
 p1 = [-1.5, -2.0, math.pi]
 p2 = [-2.0, -1.5, math.pi/2]
 p3 = [-2.0, -0.5, math.pi/2]
@@ -30,13 +33,14 @@ P9 = [0.0, 1.0, math.pi/2]
 P10 = [-2.0, 1.0, math.pi]
 P11 = [-1.0, 2.0, 0]
 P12 = [1.5, 2.0, 0]
-P13 = [0, 0, 0] #UNKOWN VALUE
+P13 = [0, 0, 0]
+# UNKOWN VALUE
 
-#robot movement
-Bot = HamBot(lidar_enabled = False, camera_enabled = False)
+# robot movement
+Bot = HamBot(lidar_enabled=False, camera_enabled=False)
 
-P1toP2LeftWheelRadius =
-
+P1toP2LeftWheelRadius = StraightLineFormula(p0[0],p1[0],p0[1], p1[1])
+print(P1toP2LeftWheelRadius)
 
 
 
