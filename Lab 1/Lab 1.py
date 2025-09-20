@@ -1,7 +1,5 @@
 #from robot_systems import HamBot
 import math
-
-#DON'T FORGET TO UNCOMMENT THE IMPORT
 def StraightLineFormula(x1, x2, y1, y2):
     #the starting point is x1, y1
     #the next point is x2, y2
@@ -9,8 +7,9 @@ def StraightLineFormula(x1, x2, y1, y2):
 
 
 class Specs:
-    AxisLength = 4
-    WheelDiameter = 2.6  # in
+    CarWidth = 0.184
+    AxisLength = CarWidth/2 #m
+    WheelDiameter = 0.09  # m
     WheelRadius = WheelDiameter / 2
     RPM = 50
 
@@ -54,46 +53,51 @@ class Waypoints(Specs):
 # using 50 RPMs
 # add segment time to total time
 #use time.time()  0r time.perf_counter for the travel time
-p0 = [2.0,-2.0,math.pi]
-p1 = [-1.5, -2.0, math.pi]
-p2 = [-2.0, -1.5, math.pi/2]
-p3 = [-2.0, -0.5, math.pi/2]
-p4 = [-1.0, -0.5, (3 * math.pi)/2]
-p5 = [-0.5, -1.0, (7 * math.pi)/4]
-p6 = [2.0, -1.0, 0]
-p7 = [2.0, 0.0, math.pi/2]
-P8 = [0.0, 0.0, math.pi]
-P9 = [0.0, 1.0, math.pi/2]
-P10 = [-2.0, 1.0, math.pi]
-P11 = [-1.0, 2.0, 0]
-P12 = [1.5, 2.0, 0]
-P13 = [0, 0, 0]
-# UNKNOWN VALUE
+if __name__ == "__main__":
+    p0 = [2.0,-2.0,math.pi]
+    p1 = [-1.5, -2.0, math.pi]
+    p2 = [-2.0, -1.5, math.pi/2]
+    p3 = [-2.0, -0.5, math.pi/2]
+    p4 = [-1.0, -0.5, (3 * math.pi)/2]
+    p5 = [-0.5, -1.0, (7 * math.pi)/4]
+    p6 = [2.0, -1.0, 0]
+    p7 = [2.0, 0.0, math.pi/2]
+    P8 = [0.0, 0.0, math.pi]
+    P9 = [0.0, 1.0, math.pi/2]
+    P10 = [-2.0, 1.0, math.pi]
+    P11 = [-1.0, 2.0, 0]
+    P12 = [1.5, 2.0, 0]
+    P13 = [0, 0, 0]
+    # UNKNOWN VALUE
 
-# robot movement
+    # robot movement
 #Bot = HamBot(lidar_enabled=False, camera_enabled=False)
 
-#UNCOMMENT THE ABOVE SECTION
+    #UNCOMMENT THE ABOVE SECTION
 
-#p0 to p1
-P0toP1 = Waypoints()
-P0toP1.LeftWheelLinearVelocity = P0toP1.WheelAngularVelocity
-P0toP1.RightWheelLinearVelocity = P0toP1.WheelAngularVelocity
-P0toP1.DistanceTraveled = StraightLineFormula(p0[0], p1[0], p0[1], p1[1])
-P0toP1.LinearVelocityTotal = (P0toP1.LeftWheelLinearVelocity + P0toP1.RightWheelLinearVelocity) /2
-P0toP1.SegmentTime = P0toP1.DistanceTraveled / P0toP1.LinearVelocityTotal
-P0toP1.WaypointTotals()
-P0toP1.PrintAll()
-#p1 to p2
-P1toP2 = Waypoints()
-P1toP2.LeftWheelLinearVelocity = P1toP2.WheelAngularVelocity
-P1toP2.RightWheelLinearVelocity = P1toP2.WheelAngularVelocity
+    #p0 to p1
+    P0toP1 = Waypoints()
+    P0toP1.LeftWheelLinearVelocity = P0toP1.WheelAngularVelocity
+    P0toP1.RightWheelLinearVelocity = P0toP1.WheelAngularVelocity
+    P0toP1.DistanceTraveled = StraightLineFormula(p0[0], p1[0], p0[1], p1[1])
+    P0toP1.LinearVelocityTotal = (P0toP1.LeftWheelLinearVelocity + P0toP1.RightWheelLinearVelocity) /2
+    P0toP1.SegmentTime = P0toP1.DistanceTraveled / P0toP1.LinearVelocityTotal
+    P0toP1.WaypointTotals()
+    P0toP1.PrintAll()
+    #p1 to p2
+    P1toP2 = Waypoints()
+    P1toP2.LeftWheelLinearVelocity = P1toP2.WheelAngularVelocity
+    P1toP2.RightWheelLinearVelocity = P1toP2.WheelAngularVelocity
+   # P1toP2.DistanceTraveled =
+    #p2 to p3
+    P2toP3 = Waypoints()
+    P2toP3.LeftWheelLinearVelocity = P2toP3.WheelAngularVelocity
+    P2toP3.RightWheelLinearVelocity = P2toP3.WheelAngularVelocity
+    P2toP3.DistanceTraveled = StraightLineFormula(p2[0], p3[0], p2[1], p3[1])
+    P2toP3.LinearVelocityTotal = (P2toP3.LeftWheelLinearVelocity + P2toP3.RightWheelLinearVelocity) / 2
+    P2toP3.SegmentTime = P2toP3.DistanceTraveled / P2toP3.LinearVelocityTotal
+    P2toP3.WaypointTotals()
+    P2toP3.PrintAll()
 
 
 
-
-
-# 7  seconds is the end of the 4 *4 maze
-# one motor turns negative to turn it 
-# left positive and right negative makes it turn clockwise
-# 1.19 time is perfect for turning 90 degrees
