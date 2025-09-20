@@ -8,7 +8,7 @@ def StraightLineFormula(x1, x2, y1, y2):
 
 class Specs:
     CarWidth = 0.184
-    AxisLength = CarWidth/2 #m
+    CarMidWidth = CarWidth/2 #m
     WheelDiameter = 0.09  # m
     WheelRadius = WheelDiameter / 2
     RPM = 50
@@ -19,7 +19,7 @@ class Waypoints(Specs):
     TotalPathLength = 0.0
 
     def __init__(self):
-        self.WheelAngularVelocity = 50 * (2 * math.pi / 60) * 0.045
+        self.WheelAngularVelocity = 50 * (2 * math.pi / 60)
         self.LeftWheelLinearVelocity = 0.0
         self.RightWheelLinearVelocity = 0.0
         self.DistanceTraveled = 0.0
