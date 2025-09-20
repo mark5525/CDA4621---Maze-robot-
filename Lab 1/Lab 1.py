@@ -5,6 +5,8 @@ def StraightLineFormula(x1, x2, y1, y2):
     #the next point is x2, y2
     return math.sqrt(math.pow(x2-x1, 2) + math.pow(y2 - y1, 2))
 
+def ArcFormula(RadiusOfCircle, Radians):
+            return RadiusOfCircle * Radians
 
 class Specs:
     CarWidth = 0.184
@@ -19,14 +21,17 @@ class Waypoints(Specs):
     TotalPathLength = 0.0
 
     def __init__(self):
+        self.PointName = ""
         self.WheelAngularVelocity = 50 * (2 * math.pi / 60)
+        self.RobotLinearVelocity = self.WheelAngularVelocity * 0.045
         self.LeftWheelLinearVelocity = 0.0
         self.RightWheelLinearVelocity = 0.0
         self.DistanceTraveled = 0.0
-        self.LinearVelocityTotal = 0.0
         self.SegmentTime = 0.0
 
     def WaypointTotals(self):
+        self.LinearVelocityTotal = (self.LeftWheelLinearVelocity + self.RightWheelLinearVelocity) /2
+        self.SegmentTime = self.DistanceTraveled / self.LinearVelocityTotal
         Waypoints.TotalTime += self.SegmentTime
         Waypoints.TotalPathLength += self.DistanceTraveled
 
@@ -38,17 +43,19 @@ class Waypoints(Specs):
     def GetPathLength(cls):
         return cls.TotalPathLength
     def PrintAll(self):
-        print(f"The right wheel angular velocity is: {self.RightWheelLinearVelocity:.2f} meters/sec."
-              f"\nThe left {self.LeftWheelLinearVelocity:.2f} meters/sec. "
-              f"\nThe robot traveled for {self.DistanceTraveled:.2f} meters"
-              f" and it took {self.SegmentTime:.2f} seconds to travel. "
-              f"\nThe expected total path length is {Waypoints.TotalPathLength:.2f} meters and "
-              f"it's expected to run for {Waypoints.GetTime():.2f} seconds ")
+        print(f"for point :{self.PointName}\n"
+              f"The right wheel angular velocity is: {self.RightWheelLinearVelocity:.2f} meters/sec.\n"
+              f"The left wheel {self.LeftWheelLinearVelocity:.2f} meters/sec.\n"
+              f"Segment distance {self.DistanceTraveled:.2f} meters\n"
+              f"and it took {self.SegmentTime:.2f} seconds to travel.\n" 
+              f"Total path length is {Waypoints.TotalPathLength:.2f} meters\n"
+              f"Total travel time is {Waypoints.GetTime():.2f} seconds\n")
 
     def PrintDuringNavigation(self):
-        print(f"The Right wheel angular velocity is: {self.RightWheelLinearVelocity:.3f} meters/sec "
-              f"and the left {self.LeftWheelLinearVelocity:.3f} meters/sec. The robot traveled for {self.DistanceTraveled:.3f} meters"
-              f", and it took {self.SegmentTime:.3f} seconds to travel")
+        print(f"Right wheel linear velocity: {self.RightWheelLinearVelocity:.3f} meters/sec "
+              f"Left wheel linear velocity: {self.LeftWheelLinearVelocity:.3f} meters/sec"
+              f"Distance: {self.DistanceTraveled:.3f} meters"
+              f"Time: {self.SegmentTime:.3f} seconds")
 # kinematics calculations
 # using 50 RPMs
 # add segment time to total time
@@ -77,27 +84,43 @@ if __name__ == "__main__":
 
     #p0 to p1
     P0toP1 = Waypoints()
-    P0toP1.LeftWheelLinearVelocity = P0toP1.WheelAngularVelocity
-    P0toP1.RightWheelLinearVelocity = P0toP1.WheelAngularVelocity
+    P0toP1.PointName = "P0 to P1"
+    P0toP1.LeftWheelLinearVelocity = P0toP1.RobotLinearVelocity
+    P0toP1.RightWheelLinearVelocity = P0toP1.RobotLinearVelocity
     P0toP1.DistanceTraveled = StraightLineFormula(p0[0], p1[0], p0[1], p1[1])
-    P0toP1.LinearVelocityTotal = (P0toP1.LeftWheelLinearVelocity + P0toP1.RightWheelLinearVelocity) /2
-    P0toP1.SegmentTime = P0toP1.DistanceTraveled / P0toP1.LinearVelocityTotal
     P0toP1.WaypointTotals()
     P0toP1.PrintAll()
+
     #p1 to p2
     P1toP2 = Waypoints()
-    P1toP2.LeftWheelLinearVelocity = P1toP2.WheelAngularVelocity
-    P1toP2.RightWheelLinearVelocity = P1toP2.WheelAngularVelocity
-   # P1toP2.DistanceTraveled =
+    P1toP2.PointName = "P1 to P2"
+    P1toP2.LeftWheelLinearVelocity = P1toP2.RobotLinearVelocity
+    P1toP2.RightWheelLinearVelocity = P1toP2.RobotLinearVelocity *(0.5 - P1toP2.CarMidWidth / 0.5 + P1toP2.CarMidWidth)
+    P1toP2.DistanceTraveled = ArcFormula(0.5, math.pi/2)
+    P1toP2.WaypointTotals()
+    P1toP2.PrintAll()
     #p2 to p3
     P2toP3 = Waypoints()
-    P2toP3.LeftWheelLinearVelocity = P2toP3.WheelAngularVelocity
-    P2toP3.RightWheelLinearVelocity = P2toP3.WheelAngularVelocity
+    P2toP3.LeftWheelLinearVelocity = P2toP3.RobotLinearVelocity
+    P2toP3.RightWheelLinearVelocity = P2toP3.RobotLinearVelocity
     P2toP3.DistanceTraveled = StraightLineFormula(p2[0], p3[0], p2[1], p3[1])
     P2toP3.LinearVelocityTotal = (P2toP3.LeftWheelLinearVelocity + P2toP3.RightWheelLinearVelocity) / 2
     P2toP3.SegmentTime = P2toP3.DistanceTraveled / P2toP3.LinearVelocityTotal
     P2toP3.WaypointTotals()
     P2toP3.PrintAll()
-
-
+    #P3 to P4
+    P3toP4 = Waypoints()
+    P3toP4.LeftWheelLinearVelocity = P3toP4.RobotLinearVelocity
+    P3toP4.RightWheelLinearVelocity = P3toP4.RobotLinearVelocity
+    P3toP4.DistanceTraveled = ArcFormula(0.5, math.pi)
+    P3toP4.WaypointTotals()
+    #P4 to P5
+    P4toP5 = Waypoints()
+    P4toP5.LeftWheelLinearVelocity = P4toP5.RobotLinearVelocity
+    P4toP5.RightWheelLinearVelocity = P4toP5.RobotLinearVelocity
+    P4toP5.DistanceTraveled = StraightLineFormula(p4[0], p5[0], p4[1], p5[1])
+    P4toP5.LinearVelocityTotal = (P4toP5.LeftWheelLinearVelocity + P4toP5.RightWheelLinearVelocity) / 2
+    P4toP5.SegmentTime = P4toP5.DistanceTraveled / P4toP5.LinearVelocityTotal
+    P4toP5.WaypointTotals()
+    
 
