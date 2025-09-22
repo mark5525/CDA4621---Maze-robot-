@@ -167,7 +167,12 @@ if __name__ == "__main__":
     P8toP9.TurnDistance = (Specs.CarMidWidth * (3 *math.pi) /2)
 
     #P9 to P10
-    
+    P9toP10 = Waypoints()
+    P9toP10.PointName = "P7 to P8"
+    P9toP10.LeftWheelLinearVelocity = P9toP10.RobotLinearVelocity
+    P9toP10.RightWheelLinearVelocity = P9toP10.RobotLinearVelocity
+    P9toP10.Flag = 1
+    P9toP10.DistanceTraveled = StraightLineFormula(p9[0], p10[0], p9[1], p10[1])
     #P10 to P11
     P10toP11 = Waypoints()
     P10toP11.PointName = "P10 to P11"
