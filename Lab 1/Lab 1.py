@@ -7,6 +7,9 @@ def StraightLineFormula(x1, x2, y1, y2):
 
 def ArcFormula(RadiusOfCircle, Radians):
             return RadiusOfCircle * Radians
+def InnerCircle(WheelVelocity, RadiusOfCurvature, CarMid):
+     value = (WheelVelocity * ((RadiusOfCurvature - CarMid) / (RadiusOfCurvature + CarMid)))
+     return value
 
 class Specs:
     CarWidth = 0.184
@@ -19,7 +22,6 @@ class Specs:
 class Waypoints(Specs):
     TotalTime = 0.0
     TotalPathLength = 0.0
-
     def __init__(self):
         self.PointName = ""
         self.WheelAngularVelocity = 50 * (2 * math.pi / 60)
@@ -28,12 +30,18 @@ class Waypoints(Specs):
         self.RightWheelLinearVelocity = 0.0
         self.DistanceTraveled = 0.0
         self.SegmentTime = 0.0
+        self.TurnDistance = Specs.CarMidWidth * (math.pi/2)
+        self.Flag = 0
 
     def WaypointTotals(self):
+        if (self.Flag == 1):
+            self.DistanceTraveled += self.TurnDistance
+            self.Flag = 0
         self.LinearVelocityTotal = (self.LeftWheelLinearVelocity + self.RightWheelLinearVelocity) /2
         self.SegmentTime = self.DistanceTraveled / self.LinearVelocityTotal
         Waypoints.TotalTime += self.SegmentTime
         Waypoints.TotalPathLength += self.DistanceTraveled
+
 
     @classmethod
     def GetTime(cls):
@@ -69,12 +77,12 @@ if __name__ == "__main__":
     p5 = [-0.5, -1.0, (7 * math.pi)/4]
     p6 = [2.0, -1.0, 0]
     p7 = [2.0, 0.0, math.pi/2]
-    P8 = [0.0, 0.0, math.pi]
-    P9 = [0.0, 1.0, math.pi/2]
-    P10 = [-2.0, 1.0, math.pi]
-    P11 = [-1.0, 2.0, 0]
-    P12 = [1.5, 2.0, 0]
-    P13 = [0, 0, 0]
+    p8 = [0.0, 0.0, math.pi]
+    p9 = [0.0, 1.0, math.pi/2]
+    p10 = [-2.0, 1.0, math.pi]
+    p11 = [-1.0, 2.0, 0]
+    p12 = [1.5, 2.0, 0]
+    p13 = [0, 0, 0]
     # UNKNOWN VALUE
 
     # robot movement
@@ -90,37 +98,67 @@ if __name__ == "__main__":
     P0toP1.DistanceTraveled = StraightLineFormula(p0[0], p1[0], p0[1], p1[1])
     P0toP1.WaypointTotals()
     P0toP1.PrintAll()
-
     #p1 to p2
     P1toP2 = Waypoints()
     P1toP2.PointName = "P1 to P2"
     P1toP2.LeftWheelLinearVelocity = P1toP2.RobotLinearVelocity
-    P1toP2.RightWheelLinearVelocity = P1toP2.RobotLinearVelocity *(0.5 - P1toP2.CarMidWidth / 0.5 + P1toP2.CarMidWidth)
+    P1toP2.RightWheelLinearVelocity = InnerCircle(P1toP2.RobotLinearVelocity, 0.5, P1toP2.CarMidWidth)
     P1toP2.DistanceTraveled = ArcFormula(0.5, math.pi/2)
     P1toP2.WaypointTotals()
     P1toP2.PrintAll()
     #p2 to p3
     P2toP3 = Waypoints()
+    P2toP3.PointName ="P2 to P3"
     P2toP3.LeftWheelLinearVelocity = P2toP3.RobotLinearVelocity
     P2toP3.RightWheelLinearVelocity = P2toP3.RobotLinearVelocity
     P2toP3.DistanceTraveled = StraightLineFormula(p2[0], p3[0], p2[1], p3[1])
-    P2toP3.LinearVelocityTotal = (P2toP3.LeftWheelLinearVelocity + P2toP3.RightWheelLinearVelocity) / 2
-    P2toP3.SegmentTime = P2toP3.DistanceTraveled / P2toP3.LinearVelocityTotal
     P2toP3.WaypointTotals()
     P2toP3.PrintAll()
     #P3 to P4
     P3toP4 = Waypoints()
+    P3toP4.PointName = "P3 to P4"
     P3toP4.LeftWheelLinearVelocity = P3toP4.RobotLinearVelocity
     P3toP4.RightWheelLinearVelocity = P3toP4.RobotLinearVelocity
     P3toP4.DistanceTraveled = ArcFormula(0.5, math.pi)
     P3toP4.WaypointTotals()
+    P3toP4.PrintAll()
     #P4 to P5
     P4toP5 = Waypoints()
+    P4toP5.PointName = "P4 to P5"
     P4toP5.LeftWheelLinearVelocity = P4toP5.RobotLinearVelocity
     P4toP5.RightWheelLinearVelocity = P4toP5.RobotLinearVelocity
     P4toP5.DistanceTraveled = StraightLineFormula(p4[0], p5[0], p4[1], p5[1])
-    P4toP5.LinearVelocityTotal = (P4toP5.LeftWheelLinearVelocity + P4toP5.RightWheelLinearVelocity) / 2
-    P4toP5.SegmentTime = P4toP5.DistanceTraveled / P4toP5.LinearVelocityTotal
     P4toP5.WaypointTotals()
-    
-
+    P4toP5.PrintAll()
+    #P5 to P6
+    P5toP6 = Waypoints()
+    P5toP6.PointName = "P5 to P6"
+    P5toP6.LeftWheelLinearVelocity = P5toP6.RobotLinearVelocity
+    P5toP6.RightWheelLinearVelocity = P5toP6.RobotLinearVelocity
+    P5toP6.DistanceTraveled = StraightLineFormula(p5[0],p6[0],p5[1],p6[1])
+    P5toP6.Flag = 1
+    P5toP6.WaypointTotals()
+    P5toP6.PrintAll()
+    #P6 to P7
+    P6toP7 = Waypoints()
+    P6toP7.PointName = "P6 to P7"
+    P6toP7.LeftWheelLinearVelocity = P6toP7.RobotLinearVelocity
+    P6toP7.RightWheelLinearVelocity = P6toP7.RobotLinearVelocity
+    # change flag direction
+    P6toP7.Flag = 1
+    P6toP7.DistanceTraveled = StraightLineFormula(p6[0],p7[0],p6[1],p7[1])
+    P6toP7.WaypointTotals()
+    P6toP7.PrintAll()
+    #P7 to P8
+    P7toP8 = Waypoints()
+    P7toP8.PointName = "P7 to P8"
+    P7toP8.LeftWheelLinearVelocity = P7toP8.RobotLinearVelocity
+    P7toP8.RightWheelLinearVelocity = P7toP8.RobotLinearVelocity
+    P7toP8.Flag = 1
+    P7toP8.DistanceTraveled = StraightLineFormula(p7[0],p8[0],p7[1],p8[1])
+    #P8 to P9
+    P8toP9 = Waypoints()
+    P8toP9.PointName = "P8t to P9"
+    P8toP9.LeftWheelLinearVelocity = P8toP9.RobotLinearVelocity
+    P8toP9.RightWheelLinearVelocity = P8toP9.RobotLinearVelocity
+ #   P8toP9.TurnDistance =
