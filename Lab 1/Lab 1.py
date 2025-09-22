@@ -193,39 +193,17 @@ if __name__ == "__main__":
 
     # running the robot 
     #p0 to p1
-    Bot.run_left_motor_for_seconds(P0toP1.SegmentTime, LinearSpeedToRPMS(P0toP1.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P0toP1.SegmentTime, LinearSpeedToRPMS(P0toP1.RightWheelLinearVelocity), True)
     #p1 to p2
-    Bot.run_left_motor_for_seconds(P1toP2.SegmentTime, LinearSpeedToRPMS(P1toP2.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P1toP2.SegmentTime, LinearSpeedToRPMS(P1toP2.RightWheelLinearVelocity), True)
     #p2 to p3
-    Bot.run_left_motor_for_seconds(P2toP3.SegmentTime, LinearSpeedToRPMS(P2toP3.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P2toP3.SegmentTime, LinearSpeedToRPMS(P2toP3.RightWheelLinearVelocity), True)
     #p3 to p4
-    Bot.run_left_motor_for_seconds(P3toP4.SegmentTime, LinearSpeedToRPMS(P3toP4.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P3toP4.SegmentTime, LinearSpeedToRPMS(P3toP4.RightWheelLinearVelocity), True)
     #p4 to p5
-    Bot.run_left_motor_for_seconds(P4toP5.SegmentTime, LinearSpeedToRPMS(P4toP5.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P4toP5.SegmentTime, LinearSpeedToRPMS(P4toP5.RightWheelLinearVelocity), True)
     #p5 to p6
-    Bot.run_left_motor_for_seconds(P5toP6.SegmentTime, LinearSpeedToRPMS(P5toP6.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P5toP6.SegmentTime, LinearSpeedToRPMS(P5toP6.RightWheelLinearVelocity), True)
     #p6 to p7
-    Bot.run_left_motor_for_seconds(P6toP7.SegmentTime, LinearSpeedToRPMS(P6toP7.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P6toP7.SegmentTime, LinearSpeedToRPMS(P6toP7.RightWheelLinearVelocity), True)
     #p7 to p8
-    Bot.run_left_motor_for_seconds(P7toP8.SegmentTime, LinearSpeedToRPMS(P7toP8.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P7toP8.SegmentTime, LinearSpeedToRPMS(P7toP8.RightWheelLinearVelocity), True)
     #p8 to p9
-    Bot.run_left_motor_for_seconds(P8toP9.SegmentTime, LinearSpeedToRPMS(P8toP9.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P8toP9.SegmentTime, LinearSpeedToRPMS(P8toP9.RightWheelLinearVelocity), True)
     #p9 to p10
-    Bot.run_left_motor_for_seconds(P9toP10.SegmentTime, LinearSpeedToRPMS(P9toP10.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P9toP10.SegmentTime, LinearSpeedToRPMS(P9toP10.RightWheelLinearVelocity), True)
     #p10 to p11
     Bot.run_left_motor_for_seconds(P10toP11.SegmentTime, LinearSpeedToRPMS(P10toP11.LeftWheelLinearVelocity), True)
     Bot.run_right_motor_for_seconds(P10toP11.SegmentTime, LinearSpeedToRPMS(P10toP11.RightWheelLinearVelocity), True)
     #p11 to p12
-    Bot.run_left_motor_for_seconds(P11toP12.SegmentTime, LinearSpeedToRPMS(P11toP12.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P11toP12.SegmentTime, LinearSpeedToRPMS(P11toP12.RightWheelLinearVelocity), True)
     #p12 to p13
