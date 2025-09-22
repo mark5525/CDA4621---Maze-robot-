@@ -1,4 +1,4 @@
-#from robot_systems import HamBot
+from HamBot.src.robot_systems import HamBot
 import math
 def StraightLineFormula(x1, x2, y1, y2):
     #the starting point is x1, y1
@@ -18,6 +18,8 @@ class Specs:
     WheelRadius = WheelDiameter / 2
     RPM = 50
 
+def LinearSpeedToRPMS(LinearSpeed, Radius = Specs.WheelRadius ,  PI2 = math.pi * 2, Seconds= 60):
+    return ((LinearSpeed * Seconds) /(PI2 * Radius))
 
 class Waypoints(Specs):
     TotalTime = 0.0
@@ -86,7 +88,7 @@ if __name__ == "__main__":
     # UNKNOWN VALUE
 
     # robot movement
-#Bot = HamBot(lidar_enabled=False, camera_enabled=False)
+    Bot = HamBot(lidar_enabled=False, camera_enabled=False)
 
     #UNCOMMENT THE ABOVE SECTION
 
@@ -97,6 +99,7 @@ if __name__ == "__main__":
     P0toP1.RightWheelLinearVelocity = P0toP1.RobotLinearVelocity
     P0toP1.DistanceTraveled = StraightLineFormula(p0[0], p1[0], p0[1], p1[1])
     P0toP1.WaypointTotals()
+    
     P0toP1.PrintAll()
     #p1 to p2
     P1toP2 = Waypoints()
@@ -144,9 +147,9 @@ if __name__ == "__main__":
     P6toP7.PointName = "P6 to P7"
     P6toP7.LeftWheelLinearVelocity = P6toP7.RobotLinearVelocity
     P6toP7.RightWheelLinearVelocity = P6toP7.RobotLinearVelocity
+    P6toP7.DistanceTraveled = StraightLineFormula(p6[0],p7[0],p6[1],p7[1])
     # change flag direction
     P6toP7.Flag = 1
-    P6toP7.DistanceTraveled = StraightLineFormula(p6[0],p7[0],p6[1],p7[1])
     P6toP7.WaypointTotals()
     P6toP7.PrintAll()
     #P7 to P8
@@ -158,7 +161,39 @@ if __name__ == "__main__":
     P7toP8.DistanceTraveled = StraightLineFormula(p7[0],p8[0],p7[1],p8[1])
     #P8 to P9
     P8toP9 = Waypoints()
-    P8toP9.PointName = "P8t to P9"
+    P8toP9.PointName = "P8 to P9"
     P8toP9.LeftWheelLinearVelocity = P8toP9.RobotLinearVelocity
     P8toP9.RightWheelLinearVelocity = P8toP9.RobotLinearVelocity
- #   P8toP9.TurnDistance =
+    P8toP9.TurnDistance = (Specs.CarMidWidth * (3 *math.pi) /2)
+
+    #P9 to P10
+    
+    #P10 to P11
+    P10toP11 = Waypoints()
+    P10toP11.PointName = "P10 to P11"
+    P10toP11.LeftWheelLinearVelocity = P10toP11.RobotLinearVelocity
+    P10toP11.RightWheelLinearVelocity = P10toP11.RobotLinearVelocity
+    P10toP11.DistanceTraveled = ArcFormula(1, (math.pi/2))
+    P10toP11.WaypointTotals()
+    P10toP11.PrintAll()
+
+    #P11 to P12 
+
+
+
+    # running the robot 
+    #p0 to p1
+    #p1 to p2
+    #p2 to p3
+    #p3 to p4
+    #p4 to p5
+    #p5 to p6
+    #p6 to p7
+    #p7 to p8
+    #p8 to p9
+    #p9 to p10
+    #p10 to p11
+    Bot.run_left_motor_for_seconds(P10toP11.SegmentTime, LinearSpeedToRPMS(P10toP11.LeftWheelLinearVelocity), True)
+    Bot.run_right_motor_for_seconds(P10toP11.SegmentTime, LinearSpeedToRPMS(P10toP11.RightWheelLinearVelocity), True)
+    #p11 to p12
+    #p12 to p13
