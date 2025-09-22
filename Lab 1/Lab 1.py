@@ -1,4 +1,4 @@
-from HamBot.src.robot_systems import HamBot
+from HamBot.src.robot_systems.robot import HamBot
 import math
 def StraightLineFormula(x1, x2, y1, y2):
     #the starting point is x1, y1
@@ -7,6 +7,7 @@ def StraightLineFormula(x1, x2, y1, y2):
 
 def ArcFormula(RadiusOfCircle, Radians):
             return RadiusOfCircle * Radians
+
 def InnerCircle(WheelVelocity, RadiusOfCurvature, CarMid):
      value = (WheelVelocity * ((RadiusOfCurvature - CarMid) / (RadiusOfCurvature + CarMid)))
      return value
@@ -20,6 +21,15 @@ class Specs:
 
 def LinearSpeedToRPMS(LinearSpeed, Radius = Specs.WheelRadius ,  PI2 = math.pi * 2, Seconds= 60):
     return ((LinearSpeed * Seconds) /(PI2 * Radius))
+
+def TurnToPosition(heading_target, tolerance = 2):
+    poscurrent = Bot.get_heading()
+    turn_angle = (heading_target - poscurrent)
+
+
+
+
+
 
 class Waypoints(Specs):
     TotalTime = 0.0
@@ -205,6 +215,7 @@ if __name__ == "__main__":
     Bot.run_left_motor_for_seconds(P3toP4.SegmentTime, LinearSpeedToRPMS(P3toP4.LeftWheelLinearVelocity), True)
     Bot.run_right_motor_for_seconds(P3toP4.SegmentTime, LinearSpeedToRPMS(P3toP4.RightWheelLinearVelocity), True)
     #p4 to p5
+    TurnToPosition(315)
     Bot.run_left_motor_for_seconds(P4toP5.SegmentTime, LinearSpeedToRPMS(P4toP5.LeftWheelLinearVelocity), True)
     Bot.run_right_motor_for_seconds(P4toP5.SegmentTime, LinearSpeedToRPMS(P4toP5.RightWheelLinearVelocity), True)
     #p5 to p6
