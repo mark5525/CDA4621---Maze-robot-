@@ -1,4 +1,4 @@
-from HamBot.src.robot_systems.robot import HamBot
+#from HamBot.src.robot_systems.robot import HamBot
 import math
 def StraightLineFormula(x1, x2, y1, y2):
     #the starting point is x1, y1
@@ -22,9 +22,51 @@ class Specs:
 def LinearSpeedToRPMS(LinearSpeed, Radius = Specs.WheelRadius ,  PI2 = math.pi * 2, Seconds= 60):
     return ((LinearSpeed * Seconds) /(PI2 * Radius))
 
-def TurnToPosition(heading_target, tolerance = 2):
-    poscurrent = Bot.get_heading()
-    turn_angle = (heading_target - poscurrent)
+def TurnToPosition(heading_target, tolerance=2):
+    poscurrent = Bot.get_heading()  # Get the current heading from the IMU
+    turn_angle = (heading_target - poscurrent)  # Calculate the angle difference
+
+    # Normalize the turn_angle to be between -180 and 180 degrees
+    if turn_angle > 180:
+        turn_angle -= 360
+    elif turn_angle < -180:
+        turn_angle += 360
+
+    # Check if the robot is within the tolerance
+    if abs(turn_angle) <= tolerance:
+        print("Robot is already at the target heading.")
+        return  # No need to turn
+
+    # Determine the direction of the turn (positive for counterclockwise, negative for clockwise)
+    turn_direction = 1 if turn_angle > 0 else -1
+
+    # Apply a proportional control to turn the robot smoothly (you can adjust the turn speed as needed)
+    turn_speed = 50 * turn_direction  # You can adjust the constant for speed
+
+    while abs(turn_angle) > tolerance:  # While the turn angle is not within tolerance
+        current_heading = Bot.get_heading()  # Update the current heading
+        turn_angle = (heading_target - current_heading)  # Recalculate turn angle
+
+        # Normalize turn angle again
+        if turn_angle > 180:
+            turn_angle -= 360
+        elif turn_angle < -180:
+            turn_angle += 360
+
+        # Rotate the robot to adjust heading
+        if turn_angle > 0:
+            Bot.set_left_motor_speed(turn_speed)  # Turn counterclockwise
+            Bot.set_right_motor_speed(-turn_speed)
+        else:
+            Bot.set_left_motor_speed(-turn_speed)  # Turn clockwise
+            Bot.set_right_motor_speed(turn_speed)
+
+        # Allow some time for the motors to adjust
+        time.sleep(0.1)
+
+    # Stop the motors once the target heading is reached
+    Bot.stop_motors()
+    print(f"Robot has reached the target heading: {heading_target} degrees.")
 
 
 
@@ -98,7 +140,7 @@ if __name__ == "__main__":
     # UNKNOWN VALUE
 
     # robot movement
-    Bot = HamBot(lidar_enabled=False, camera_enabled=False)
+    #Bot = HamBot(lidar_enabled=False, camera_enabled=False)
 
     #UNCOMMENT THE ABOVE SECTION
 
@@ -131,7 +173,7 @@ if __name__ == "__main__":
     P3toP4 = Waypoints()
     P3toP4.PointName = "P3 to P4"
     P3toP4.LeftWheelLinearVelocity = P3toP4.RobotLinearVelocity
-    P3toP4.RightWheelLinearVelocity = P3toP4.RobotLinearVelocity
+    P3toP4.RightWheelLinearVelocity = InnerCircle(P3toP4.RobotLinearVelocity, 0.5, math.pi)
     P3toP4.DistanceTraveled = ArcFormula(0.5, math.pi)
     P3toP4.WaypointTotals()
     P3toP4.PrintAll()
@@ -175,7 +217,7 @@ if __name__ == "__main__":
     P8toP9.LeftWheelLinearVelocity = P8toP9.RobotLinearVelocity
     P8toP9.RightWheelLinearVelocity = P8toP9.RobotLinearVelocity
     P8toP9.TurnDistance = (Specs.CarMidWidth * (3 *math.pi) /2)
-
+    P8toP9.PrintAll()
     #P9 to P10
     P9toP10 = Waypoints()
     P9toP10.PointName = "P7 to P8"
@@ -183,11 +225,12 @@ if __name__ == "__main__":
     P9toP10.RightWheelLinearVelocity = P9toP10.RobotLinearVelocity
     P9toP10.Flag = 1
     P9toP10.DistanceTraveled = StraightLineFormula(p9[0], p10[0], p9[1], p10[1])
+    P9toP10.PrintAll()
     #P10 to P11
     P10toP11 = Waypoints()
     P10toP11.PointName = "P10 to P11"
     P10toP11.LeftWheelLinearVelocity = P10toP11.RobotLinearVelocity
-    P10toP11.RightWheelLinearVelocity = P10toP11.RobotLinearVelocity
+    P10toP11.RightWheelLinearVelocity = InnerCircle( P10toP11.RobotLinearVelocity, 1, math.pi/2)
     P10toP11.DistanceTraveled = ArcFormula(1, (math.pi/2))
     P10toP11.WaypointTotals()
     P10toP11.PrintAll()
@@ -199,7 +242,7 @@ if __name__ == "__main__":
     P11toP12.RightWheelLinearVelocity = P11toP12.RobotLinearVelocity
     P11toP12.DistanceTraveled = StraightLineFormula(p11[0], p12[0], p11[1], p12[1])
     P11toP12.WaypointTotals()
-
+    P11toP12.PrintAll()
 
     # running the robot 
     #p0 to p1
