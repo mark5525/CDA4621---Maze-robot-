@@ -34,7 +34,7 @@ import time
 
 import time
 
-def turn_to(target_heading, tolerance=2):
+def TurnToPosition(target_heading, tolerance=2):
     """
     Turn the robot in place to the absolute heading (0=East, 90=North, 180=West, 270=South).
     Uses compass and wheels. Angles are in degrees.
@@ -268,7 +268,7 @@ if __name__ == "__main__":
                                LinearSpeedToRPMS(P3toP4.RightWheelLinearVelocity))
     # p4 to p5
 
-    turn_to(90)
+    TurnToPosition(90)
     Bot.run_motors_for_seconds(P4toP5.SegmentTime, LinearSpeedToRPMS(P4toP5.LeftWheelLinearVelocity), LinearSpeedToRPMS(P4toP5.RightWheelLinearVelocity))
     #p5 to p6
     TurnToPosition(0)
