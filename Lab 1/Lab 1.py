@@ -1,4 +1,4 @@
-#from HamBot.src.robot_systems.robot import HamBot
+from HamBot.src.robot_systems.robot import HamBot
 import math
 import time
 def StraightLineFormula(x1, x2, y1, y2):
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     # UNKNOWN VALUE
 
     # robot movement
-    #Bot = HamBot(lidar_enabled=False, camera_enabled=False)
+    Bot = HamBot(lidar_enabled=False, camera_enabled=False)
 
     #UNCOMMENT THE ABOVE SECTION
 
