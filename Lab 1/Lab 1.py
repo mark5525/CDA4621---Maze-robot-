@@ -247,11 +247,10 @@ if __name__ == "__main__":
 
     # running the robot 
     #p0 to p1
-    Bot.run_left_motor_for_seconds(P0toP1.SegmentTime, LinearSpeedToRPMS(P0toP1.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P0toP1.SegmentTime, LinearSpeedToRPMS(P0toP1.RightWheelLinearVelocity), True)
+    Bot.run_motors_for_seconds(P1toP2.SegmentTime, LinearSpeedToRPMS(P0toP1.LeftWheelLinearVelocity),LinearSpeedToRPMS(P0toP1.RightWheelLinearVelocity))
+
     #p1 to p2
-    Bot.run_left_motor_for_seconds(P1toP2.SegmentTime, LinearSpeedToRPMS(P1toP2.LeftWheelLinearVelocity), True)
-    Bot.run_right_motor_for_seconds(P1toP2.SegmentTime, LinearSpeedToRPMS(P1toP2.RightWheelLinearVelocity), True)
+    Bot.run_motors_for_seconds(P1toP2.SegmentTime, LinearSpeedToRPMS(P1toP2.LeftWheelLinearVelocity),LinearSpeedToRPMS(P1toP2.RightWheelLinearVelocity))
     #p2 to p3
     Bot.run_left_motor_for_seconds(P2toP3.SegmentTime, LinearSpeedToRPMS(P2toP3.LeftWheelLinearVelocity), True)
     Bot.run_right_motor_for_seconds(P2toP3.SegmentTime, LinearSpeedToRPMS(P2toP3.RightWheelLinearVelocity), True)
