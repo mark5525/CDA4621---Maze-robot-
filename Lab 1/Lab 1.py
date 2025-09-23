@@ -29,11 +29,6 @@ class Specs:
 def LinearSpeedToRPMS(LinearSpeed, Radius=Specs.WheelRadius, PI2=math.pi * 2, Seconds=60):
     return ((LinearSpeed * Seconds) / (PI2 * Radius))
 def TurnToPosition(target_heading, tolerance=2):
-    """
-    Turn the robot in place to the absolute heading (0=East, 90=North, 180=West, 270=South).
-    Uses compass and wheels. Angles are in degrees.
-    """
-    # Read current heading (degrees from East, CCW)
     poscurrent = Bot.get_heading()
     turn_angle = target_heading - poscurrent
     if turn_angle > 180:
@@ -46,30 +41,25 @@ def TurnToPosition(target_heading, tolerance=2):
         return  # No need to turn
     turn_direction = 1 if turn_angle > 0 else -1
 
-    # Turn until aligned within a small tolerance
     while True:
         current = Bot.get_heading()
         finding_angle = target_heading - current
 
-        # Normalize error between -180 and 180 degrees
         if finding_angle > 180:
             finding_angle -= 360
         elif finding_angle <= -180:
             finding_angle += 360
 
-        # Stop if within tolerance
         if abs(finding_angle) < tolerance:
             Bot.stop_motors()
             print(f"Robot reached target heading: {target_heading} degrees")
             return
 
-        # Turn in place: left wheel opposite of right wheel
-        # Use proportional control for smooth turning (increase speed if error is large)
-        speed = 2.0 * turn_direction  # Adjust this value as needed for faster/slower turns
+        speed = 2.0 * turn_direction
         Bot.set_left_motor_speed(-speed)
         Bot.set_right_motor_speed(speed)
 
-        time.sleep(0.01)  # Small sleep to allow motor response and control loop
+        time.sleep(0.01)
 
 
 class Waypoints(Specs):
