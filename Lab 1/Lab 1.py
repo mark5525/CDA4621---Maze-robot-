@@ -1,4 +1,4 @@
-from HamBot.src.robot_systems.robot import HamBot
+#from HamBot.src.robot_systems.robot import HamBot
 import math
 import time
 def StraightLineFormula(x1, x2, y1, y2):
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     # UNKNOWN VALUE
 
     # robot movement
-    Bot = HamBot(lidar_enabled=False, camera_enabled=False)
+    #Bot = HamBot(lidar_enabled=False, camera_enabled=False)
 
     #UNCOMMENT THE ABOVE SECTION
 
@@ -174,7 +174,7 @@ if __name__ == "__main__":
     P3toP4 = Waypoints()
     P3toP4.PointName = "P3 to P4"
     P3toP4.LeftWheelLinearVelocity = P3toP4.RobotLinearVelocity
-    P3toP4.RightWheelLinearVelocity = InnerCircle(P3toP4.RobotLinearVelocity, 0.5, math.pi)
+    P3toP4.RightWheelLinearVelocity = InnerCircle(P3toP4.RobotLinearVelocity, 0.5, Specs.CarMidWidth)
     P3toP4.DistanceTraveled = ArcFormula(0.5, math.pi)
     P3toP4.WaypointTotals()
     P3toP4.PrintAll()
