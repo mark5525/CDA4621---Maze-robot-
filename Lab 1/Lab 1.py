@@ -183,6 +183,8 @@ if __name__ == "__main__":
     P4toP5.LeftWheelLinearVelocity = P4toP5.RobotLinearVelocity
     P4toP5.RightWheelLinearVelocity = P4toP5.RobotLinearVelocity
     P4toP5.DistanceTraveled = StraightLineFormula(p4[0], p5[0], p4[1], p5[1])
+    P4toP5.TurnDistance = Specs.CarMidWidth * (math.pi / 4)
+    P4toP5.Flag = 1
     P4toP5.WaypointTotals()
     P4toP5.PrintAll()
     # P5 to P6
@@ -214,7 +216,7 @@ if __name__ == "__main__":
     P8toP9.PointName = "P8 to P9"
     P8toP9.LeftWheelLinearVelocity = P8toP9.RobotLinearVelocity
     P8toP9.RightWheelLinearVelocity = P8toP9.RobotLinearVelocity
-    P8toP9.TurnDistance = (Specs.CarMidWidth * (math.pi / 2))
+    P8toP9.TurnDistance = Specs.CarMidWidth * (math.pi / 2)
     # P9 to P10
     P9toP10 = Waypoints()
     P9toP10.PointName = "P7 to P8"
