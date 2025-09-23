@@ -21,7 +21,6 @@ def print_navigation_data(self, waypoint, start_time):
     print(f"Left Motor Radians: {left_radians:.2f} rad")
     print(f"Right Motor Radians: {right_radians:.2f} rad")
     print(f"Waypoint {waypoint} reached.")
-    print(f"Total time: {total_time:.2f} seconds")
 
 def ArcFormula(RadiusOfCircle, Radians):
     return RadiusOfCircle * Radians
