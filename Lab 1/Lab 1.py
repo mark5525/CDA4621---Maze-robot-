@@ -8,6 +8,48 @@ def StraightLineFormula(x1, x2, y1, y2):
     # the next point is x2, y2
     return math.sqrt(math.pow(x2 - x1, 2) + math.pow(y2 - y1, 2))
 
+def update_motor_positions(self):
+    """Threaded method to update the motor positions continuously."""
+    start_time = time.time()  # Record start time
+    while not self.stop_thread:
+        # Update left motor
+        current_left_position = self.left_motor.get_position()
+        delta_left_degrees = current_left_position - self.last_left_position
+
+        # Handle wrap-around for the left motor
+        if delta_left_degrees > 180:
+            delta_left_degrees -= 360
+        elif delta_left_degrees < -180:
+            delta_left_degrees += 360
+
+        # Adjust the accumulation by inverting the direction for the left motor
+        self.left_motor_radians -= math.radians(delta_left_degrees)  # Negate to account for motor configuration
+        self.last_left_position = current_left_position
+
+        # Update right motor
+        current_right_position = self.right_motor.get_position()
+        delta_right_degrees = current_right_position - self.last_right_position
+
+        # Handle wrap-around for the right motor
+        if delta_right_degrees > 180:
+            delta_right_degrees -= 360
+        elif delta_right_degrees < -180:
+            delta_right_degrees += 360
+
+        # Convert to radians and accumulate
+        self.right_motor_radians += math.radians(delta_right_degrees)
+        self.last_right_position = current_right_position
+
+        # Calculate the elapsed time
+        elapsed_time = time.time() - start_time
+
+        # Print the encoder readings and elapsed time
+        print(f"Elapsed Time: {elapsed_time:.2f} seconds")
+        print(f"Left Motor Radians: {self.left_motor_radians:.2f} rad")
+        print(f"Right Motor Radians: {self.right_motor_radians:.2f} rad")
+
+        # Sleep to avoid excessive CPU usage
+        time.sleep(0.05)
 
 def ArcFormula(RadiusOfCircle, Radians):
     return RadiusOfCircle * Radians
@@ -143,6 +185,7 @@ if __name__ == "__main__":
     P0toP1.RightWheelLinearVelocity = P0toP1.RobotLinearVelocity
     P0toP1.DistanceTraveled = StraightLineFormula(p0[0], p1[0], p0[1], p1[1])
     P0toP1.WaypointTotals()
+    P0toP1.PrintDuringNavigation()
 
     # p1 to p2
     P1toP2 = Waypoints()
@@ -151,6 +194,7 @@ if __name__ == "__main__":
     P1toP2.RightWheelLinearVelocity = InnerCircle(P1toP2.RobotLinearVelocity, 0.5, Specs.CarMidWidth)
     P1toP2.DistanceTraveled = ArcFormula(0.5, math.pi / 2)
     P1toP2.WaypointTotals()
+    P1toP2.Print
     # p2 to p3
     P2toP3 = Waypoints()
     P2toP3.PointName = "P2 to P3"
