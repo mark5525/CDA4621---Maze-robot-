@@ -30,52 +30,44 @@ def LinearSpeedToRPMS(LinearSpeed, Radius=Specs.WheelRadius, PI2=math.pi * 2, Se
     return ((LinearSpeed * Seconds) / (PI2 * Radius))
 
 
-def TurnToPosition(heading_target, tolerance= 2):
-    poscurrent = Bot.get_heading()  # Get the current heading from the IMU
-    turn_angle = (heading_target - poscurrent)  # Calculate the angle difference
+def TurnToPosition(target_heading, tolerance=2):
+    """
+    Turns the robot to the target heading using the shortest path.
+    """
 
-    # Normalize the turn_angle to be between -180 and 180 degrees
-    if turn_angle > 180:
-        turn_angle -= 360
-    elif turn_angle < -180:
-        turn_angle += 360
+    max_speed = 50
+    proportional_gain = 0.5
 
-    # Check if the robot is within the tolerance
-    if abs(turn_angle) <= tolerance:
-        print("Robot is already at the target heading.")
-        return  # No need to turn
+    while True:
+        current_heading = Bot.get_heading()  # Get current heading
+        # Compute error between target and current heading
+        error = target_heading - current_heading
 
-    # Determine the direction of the turn (positive for counterclockwise, negative for clockwise)
-    turn_direction = 1 if turn_angle > 0 else -1
+        # Normalize error to [-180, 180]
+        if error > 180:
+            error -= 360
+        elif error < -180:
+            error += 360
 
-    # Apply a proportional control to turn the robot smoothly (you can adjust the turn speed as needed)
-    turn_speed = 15 * turn_direction  # You can adjust the constant for speed
+        # If within tolerance, stop
+        if abs(error) <= tolerance:
+            Bot.stop_motors()
+            print(f"Reached target heading: {target_heading}")
+            break
 
-    while abs(turn_angle) > tolerance:  # While the turn angle is not within tolerance
-        current_heading = Bot.get_heading()  # Update the current heading
-        turn_angle = (heading_target - current_heading)  # Recalculate turn angle
+        # Determine speed (proportional control)
+        speed = proportional_gain * abs(error)
+        speed = min(speed, max_speed)
 
-        # Normalize turn angle again
-        if turn_angle > 180:
-            turn_angle -= 360
-        elif turn_angle < -180:
-            turn_angle += 360
+        # Set motor directions based on shortest path
+        if error > 0:  # Need to turn CCW
+            Bot.set_left_motor_speed(speed)
+            Bot.set_right_motor_speed(-speed)
+        else:  # Need to turn CW
+            Bot.set_left_motor_speed(-speed)
+            Bot.set_right_motor_speed(speed)
 
-        # Rotate the robot to adjust heading
-        if turn_angle > 0:
-            Bot.set_left_motor_speed(-turn_speed)  # Turn counterclockwise (left motor inverted)
-            Bot.set_right_motor_speed(-turn_speed)
-        else:
-            Bot.set_left_motor_speed(turn_speed)  # Turn clockwise (left motor inverted)
-            Bot.set_right_motor_speed(turn_speed)
-
-        # Allow some time for the motors to adjust
-        time.sleep(0.1)
-
-    # Stop the motors once the target heading is reached
-    Bot.stop_motors()
-    print(f"Robot has reached the target heading: {heading_target} degrees.")
-
+        time.sleep(0.05)  # Short sleep to update heading
 
 class Waypoints(Specs):
     TotalTime = 0.0
