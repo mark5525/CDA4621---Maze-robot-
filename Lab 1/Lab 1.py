@@ -1,7 +1,7 @@
 from HamBot.src.robot_systems.robot import HamBot
 import math
 import time
-#hi
+
 
 def StraightLineFormula(x1, x2, y1, y2):
     # the starting point is x1, y1
