@@ -10,7 +10,7 @@ def ArcFormula(RadiusOfCircle, Radians):
             return RadiusOfCircle * Radians
 
 def InnerCircle(WheelVelocity, RadiusOfCurvature, CarMid):
-     value = (WheelVelocity * ((RadiusOfCurvature - CarMid) / (RadiusOfCurvature + CarMid)))
+     value = WheelVelocity * ((RadiusOfCurvature - CarMid) / (RadiusOfCurvature + CarMid))
      return value
 
 class Specs:
