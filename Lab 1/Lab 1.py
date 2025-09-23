@@ -49,7 +49,7 @@ def TurnToPosition(heading_target, tolerance=2):
     turn_direction = 1 if turn_angle > 0 else -1
 
     # Apply a proportional control to turn the robot smoothly (you can adjust the turn speed as needed)
-    turn_speed = 50 * turn_direction  # You can adjust the constant for speed
+    turn_speed = 2 * turn_direction  # You can adjust the constant for speed
 
     while abs(turn_angle) > tolerance:  # While the turn angle is not within tolerance
         current_heading = Bot.get_heading()  # Update the current heading
