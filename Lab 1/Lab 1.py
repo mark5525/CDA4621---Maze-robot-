@@ -268,7 +268,7 @@ if __name__ == "__main__":
                                LinearSpeedToRPMS(P3toP4.RightWheelLinearVelocity))
     # p4 to p5
 
-    TurnToPosition(90)
+    TurnToPosition(315)
     Bot.run_motors_for_seconds(P4toP5.SegmentTime, LinearSpeedToRPMS(P4toP5.LeftWheelLinearVelocity), LinearSpeedToRPMS(P4toP5.RightWheelLinearVelocity))
     #p5 to p6
     TurnToPosition(0)
