@@ -8,48 +8,19 @@ def StraightLineFormula(x1, x2, y1, y2):
     # the next point is x2, y2
     return math.sqrt(math.pow(x2 - x1, 2) + math.pow(y2 - y1, 2))
 
-def update_motor_positions(self):
-    """Threaded method to update the motor positions continuously."""
-    start_time = time.time()  # Record start time
-    while not self.stop_thread:
-        # Update left motor
-        current_left_position = self.left_motor.get_position()
-        delta_left_degrees = current_left_position - self.last_left_position
+def print_navigation_data(self, waypoint, start_time):
+    """Print the encoder data and elapsed time during navigation."""
+    # Get the encoder readings and calculate elapsed time
+    elapsed_time = time.time() - start_time
+    left_radians = self.get_left_encoder_reading()
+    right_radians = self.get_right_encoder_reading()
 
-        # Handle wrap-around for the left motor
-        if delta_left_degrees > 180:
-            delta_left_degrees -= 360
-        elif delta_left_degrees < -180:
-            delta_left_degrees += 360
-
-        # Adjust the accumulation by inverting the direction for the left motor
-        self.left_motor_radians -= math.radians(delta_left_degrees)  # Negate to account for motor configuration
-        self.last_left_position = current_left_position
-
-        # Update right motor
-        current_right_position = self.right_motor.get_position()
-        delta_right_degrees = current_right_position - self.last_right_position
-
-        # Handle wrap-around for the right motor
-        if delta_right_degrees > 180:
-            delta_right_degrees -= 360
-        elif delta_right_degrees < -180:
-            delta_right_degrees += 360
-
-        # Convert to radians and accumulate
-        self.right_motor_radians += math.radians(delta_right_degrees)
-        self.last_right_position = current_right_position
-
-        # Calculate the elapsed time
-        elapsed_time = time.time() - start_time
-
-        # Print the encoder readings and elapsed time
-        print(f"Elapsed Time: {elapsed_time:.2f} seconds")
-        print(f"Left Motor Radians: {self.left_motor_radians:.2f} rad")
-        print(f"Right Motor Radians: {self.right_motor_radians:.2f} rad")
-
-        # Sleep to avoid excessive CPU usage
-        time.sleep(0.05)
+    # Print the relevant data
+    print(f"Navigating to {waypoint}\n")
+    print(f"Elapsed Time: {elapsed_time:.2f} seconds\n")
+    print(f"Left Motor Radians: {left_radians:.2f} rad\n")
+    print(f"Right Motor Radians: {right_radians:.2f} rad\n")
+    print(f"Waypoint {waypoint} reached.\n")
 
 def ArcFormula(RadiusOfCircle, Radians):
     return RadiusOfCircle * Radians
@@ -249,6 +220,7 @@ if __name__ == "__main__":
     P7toP8.RightWheelLinearVelocity = P7toP8.RobotLinearVelocity
     P7toP8.Flag = 1
     P7toP8.DistanceTraveled = StraightLineFormula(p7[0], p8[0], p7[1], p8[1])
+    P7toP8.WaypointTotals()
     P7toP8.PrintDuringNavigation()
     # P8 to P9
     P8toP9 = Waypoints()
@@ -257,6 +229,7 @@ if __name__ == "__main__":
     P8toP9.RightWheelLinearVelocity = P8toP9.RobotLinearVelocity
     P8toP9.Flag = 1
     P8toP9.DistanceTraveled = StraightLineFormula(p8[0], p9[0], p8[1], p9[1])
+    P8toP9.WaypointTotals()
     P8toP9.PrintDuringNavigation()
     # P9 to P10
     P9toP10 = Waypoints()
@@ -265,6 +238,7 @@ if __name__ == "__main__":
     P9toP10.RightWheelLinearVelocity = P9toP10.RobotLinearVelocity
     P9toP10.Flag = 1
     P9toP10.DistanceTraveled = StraightLineFormula(p9[0], p10[0], p9[1], p10[1])
+    P9toP10.WaypointTotals()
     P9toP10.PrintDuringNavigation()
     # P10 to P11
     P10toP11 = Waypoints()
@@ -285,53 +259,48 @@ if __name__ == "__main__":
 
     # running the robot
     # p0 to p1
-    Bot.run_motors_for_seconds(P1toP2.SegmentTime, LinearSpeedToRPMS(P0toP1.LeftWheelLinearVelocity),
+    Bot.run_motors_for_seconds(P0toP1.SegmentTime, LinearSpeedToRPMS(P0toP1.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P0toP1.RightWheelLinearVelocity))
-    update_motor_positions(Bot)
+    print_navigation_data(P0toP1.PointName, time.time())
     # p1 to p2
     Bot.run_motors_for_seconds(P1toP2.SegmentTime, LinearSpeedToRPMS(P1toP2.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P1toP2.RightWheelLinearVelocity))
-    update_motor_positions(Bot)
+    print_navigation_data(P1toP2.PointName, time.time())
     # p2 to p3
     Bot.run_motors_for_seconds(P2toP3.SegmentTime, LinearSpeedToRPMS(P2toP3.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P2toP3.RightWheelLinearVelocity))
-    update_motor_positions(Bot)
+    print_navigation_data(P2toP3.PointName, time.time())
     # p3 to p4
     Bot.run_motors_for_seconds(P3toP4.SegmentTime, LinearSpeedToRPMS(P3toP4.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P3toP4.RightWheelLinearVelocity))
-    update_motor_positions(Bot)
+    print_navigation_data(P3toP4.PointName, time.time())
     # p4 to p5
     TurnToPosition(315)
     Bot.run_motors_for_seconds(P4toP5.SegmentTime, LinearSpeedToRPMS(P4toP5.LeftWheelLinearVelocity), LinearSpeedToRPMS(P4toP5.RightWheelLinearVelocity))
-    update_motor_positions(Bot)
+    print_navigation_data(P4toP5.PointName, time.time())
     #p5 to p6
-    TurnToPosition(0)
+    TurnToPosition(time.time())
     Bot.run_motors_for_seconds(P5toP6.SegmentTime, LinearSpeedToRPMS(P5toP6.LeftWheelLinearVelocity), LinearSpeedToRPMS(P5toP6.RightWheelLinearVelocity))
-    update_motor_positions(Bot)
+    print_navigation_data(P5toP6.PointName, time.time())
     #p6 to p7
     TurnToPosition(90)
     Bot.run_motors_for_seconds(P6toP7.SegmentTime, LinearSpeedToRPMS(P6toP7.LeftWheelLinearVelocity), LinearSpeedToRPMS(P6toP7.RightWheelLinearVelocity))
-    update_motor_positions(Bot)
+    print_navigation_data(P6toP7.PointName, time.time())
     #p7 to p8
     TurnToPosition(180)
-    P7toP8.PrintDuringNavigation()
     Bot.run_motors_for_seconds(P7toP8.SegmentTime, LinearSpeedToRPMS(P7toP8.LeftWheelLinearVelocity), LinearSpeedToRPMS(P7toP8.RightWheelLinearVelocity))
-    update_motor_positions(Bot)
+    print_navigation_data(P7toP8.PointName, time.time())
     #p8 to p9
-    TurnToPosition(90)
-    P8toP9.PrintDuringNavigation()
+    TurnToPosition(9)
     Bot.run_motors_for_seconds(P8toP9.SegmentTime, LinearSpeedToRPMS(P8toP9.LeftWheelLinearVelocity), LinearSpeedToRPMS(P8toP9.RightWheelLinearVelocity))
-    update_motor_positions(Bot)
-    #p9 to p10
+    print_navigation_data(P8toP9.PointName, time.time())
+    #p9 to p1time.time()
     TurnToPosition(180)
     Bot.run_motors_for_seconds(P9toP10.SegmentTime, LinearSpeedToRPMS(P9toP10.LeftWheelLinearVelocity), LinearSpeedToRPMS(P9toP10.RightWheelLinearVelocity))
-    update_motor_positions(Bot)
-    P9toP10.PrintDuringNavigation()
+    print_navigation_data(P9toP10.PointName, time.time())
     #p10 to p11
     Bot.run_motors_for_seconds(P10toP11.SegmentTime, LinearSpeedToRPMS(P10toP11.LeftWheelLinearVelocity), LinearSpeedToRPMS(P10toP11.RightWheelLinearVelocity))
-    update_motor_positions(Bot)
-    P10toP11.PrintDuringNavigation()
+    print_navigation_data(P10toP11.PointName, time.time())
     #p11 to p12
     Bot.run_motors_for_seconds(P11toP12.SegmentTime, LinearSpeedToRPMS(P11toP12.LeftWheelLinearVelocity), LinearSpeedToRPMS(P11toP12.RightWheelLinearVelocity))
-    update_motor_positions(Bot)
-    P11toP12.PrintDuringNavigation()
+    print_navigation_data(P11toP12.PointName, time.time())
