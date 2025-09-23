@@ -118,10 +118,11 @@ class Waypoints(Specs):
               f"Total travel time is {Waypoints.GetTime():.2f} seconds\n")
 
     def PrintDuringNavigation(self):
-        print(f"Right wheel linear velocity: {self.RightWheelLinearVelocity:.3f} meters/sec "
-              f"Left wheel linear velocity: {self.LeftWheelLinearVelocity:.3f} meters/sec"
-              f"Distance: {self.DistanceTraveled:.3f} meters"
-              f"Time: {self.SegmentTime:.3f} seconds")
+        print(f"for point :{self.PointName}\n"
+              f"The right wheel angular velocity is: {self.RightWheelLinearVelocity:.2f} meters/sec.\n"
+              f"The left wheel {self.LeftWheelLinearVelocity:.2f} meters/sec.\n"
+              f"Segment distance {self.DistanceTraveled:.2f} meters\n"
+              f"and it took {self.SegmentTime:.2f} seconds to travel.\n")
 
 
 # kinematics calculations
@@ -223,7 +224,6 @@ if __name__ == "__main__":
     P7toP8.PrintDuringNavigation()
     # P8 to P9
     P8toP9 = Waypoints()
-    P8toP9 = Waypoints()
     P8toP9.PointName = "P8 to P9"
     P8toP9.LeftWheelLinearVelocity = P8toP9.RobotLinearVelocity
     P8toP9.RightWheelLinearVelocity = P8toP9.RobotLinearVelocity
@@ -286,7 +286,7 @@ if __name__ == "__main__":
     print_navigation_data(Bot, P4toP5.PointName, start_time)
     # p5 to p6
     start_time = time.time()
-    TurnToPosition(time.time())
+    TurnToPosition(0)
     Bot.run_motors_for_seconds(P5toP6.SegmentTime, LinearSpeedToRPMS(P5toP6.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P5toP6.RightWheelLinearVelocity))
     print_navigation_data(Bot, P5toP6.PointName, start_time)
