@@ -14,13 +14,14 @@ def print_navigation_data(self, waypoint, start_time):
     elapsed_time = time.time() - start_time
     left_radians = self.get_left_encoder_reading()
     right_radians = self.get_right_encoder_reading()
-
+    total_time = time.time()
     # Print the relevant data
-    print(f"Navigating to {waypoint}\n")
-    print(f"Elapsed Time: {elapsed_time:.2f} seconds\n")
-    print(f"Left Motor Radians: {left_radians:.2f} rad\n")
-    print(f"Right Motor Radians: {right_radians:.2f} rad\n")
-    print(f"Waypoint {waypoint} reached.\n")
+    print(f"Navigating to {waypoint}")
+    print(f"Elapsed Time: {elapsed_time:.2f} seconds")
+    print(f"Left Motor Radians: {left_radians:.2f} rad")
+    print(f"Right Motor Radians: {right_radians:.2f} rad")
+    print(f"Waypoint {waypoint} reached.")
+    print("Total time: {total_time:.2f} seconds")
 
 def ArcFormula(RadiusOfCircle, Radians):
     return RadiusOfCircle * Radians
@@ -261,46 +262,46 @@ if __name__ == "__main__":
     # p0 to p1
     Bot.run_motors_for_seconds(P0toP1.SegmentTime, LinearSpeedToRPMS(P0toP1.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P0toP1.RightWheelLinearVelocity))
-    print_navigation_data(P0toP1.PointName, time.time())
+    print_navigation_data(Bot, P0toP1.PointName, time.time())
     # p1 to p2
     Bot.run_motors_for_seconds(P1toP2.SegmentTime, LinearSpeedToRPMS(P1toP2.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P1toP2.RightWheelLinearVelocity))
-    print_navigation_data(P1toP2.PointName, time.time())
+    print_navigation_data(Bot,P1toP2.PointName, time.time())
     # p2 to p3
     Bot.run_motors_for_seconds(P2toP3.SegmentTime, LinearSpeedToRPMS(P2toP3.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P2toP3.RightWheelLinearVelocity))
-    print_navigation_data(P2toP3.PointName, time.time())
+    print_navigation_data(Bot,P2toP3.PointName, time.time())
     # p3 to p4
     Bot.run_motors_for_seconds(P3toP4.SegmentTime, LinearSpeedToRPMS(P3toP4.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P3toP4.RightWheelLinearVelocity))
-    print_navigation_data(P3toP4.PointName, time.time())
+    print_navigation_data(Bot,P3toP4.PointName, time.time())
     # p4 to p5
     TurnToPosition(315)
     Bot.run_motors_for_seconds(P4toP5.SegmentTime, LinearSpeedToRPMS(P4toP5.LeftWheelLinearVelocity), LinearSpeedToRPMS(P4toP5.RightWheelLinearVelocity))
-    print_navigation_data(P4toP5.PointName, time.time())
+    print_navigation_data(Bot,P4toP5.PointName, time.time())
     #p5 to p6
     TurnToPosition(time.time())
     Bot.run_motors_for_seconds(P5toP6.SegmentTime, LinearSpeedToRPMS(P5toP6.LeftWheelLinearVelocity), LinearSpeedToRPMS(P5toP6.RightWheelLinearVelocity))
-    print_navigation_data(P5toP6.PointName, time.time())
+    print_navigation_data(Bot,P5toP6.PointName, time.time())
     #p6 to p7
     TurnToPosition(90)
     Bot.run_motors_for_seconds(P6toP7.SegmentTime, LinearSpeedToRPMS(P6toP7.LeftWheelLinearVelocity), LinearSpeedToRPMS(P6toP7.RightWheelLinearVelocity))
-    print_navigation_data(P6toP7.PointName, time.time())
+    print_navigation_data(Bot,P6toP7.PointName, time.time())
     #p7 to p8
     TurnToPosition(180)
     Bot.run_motors_for_seconds(P7toP8.SegmentTime, LinearSpeedToRPMS(P7toP8.LeftWheelLinearVelocity), LinearSpeedToRPMS(P7toP8.RightWheelLinearVelocity))
-    print_navigation_data(P7toP8.PointName, time.time())
+    print_navigation_data(Bot,P7toP8.PointName, time.time())
     #p8 to p9
     TurnToPosition(9)
     Bot.run_motors_for_seconds(P8toP9.SegmentTime, LinearSpeedToRPMS(P8toP9.LeftWheelLinearVelocity), LinearSpeedToRPMS(P8toP9.RightWheelLinearVelocity))
-    print_navigation_data(P8toP9.PointName, time.time())
+    print_navigation_data(Bot,P8toP9.PointName, time.time())
     #p9 to p1time.time()
     TurnToPosition(180)
     Bot.run_motors_for_seconds(P9toP10.SegmentTime, LinearSpeedToRPMS(P9toP10.LeftWheelLinearVelocity), LinearSpeedToRPMS(P9toP10.RightWheelLinearVelocity))
-    print_navigation_data(P9toP10.PointName, time.time())
+    print_navigation_data(Bot,P9toP10.PointName, time.time())
     #p10 to p11
     Bot.run_motors_for_seconds(P10toP11.SegmentTime, LinearSpeedToRPMS(P10toP11.LeftWheelLinearVelocity), LinearSpeedToRPMS(P10toP11.RightWheelLinearVelocity))
-    print_navigation_data(P10toP11.PointName, time.time())
+    print_navigation_data(Bot,P10toP11.PointName, time.time())
     #p11 to p12
     Bot.run_motors_for_seconds(P11toP12.SegmentTime, LinearSpeedToRPMS(P11toP12.LeftWheelLinearVelocity), LinearSpeedToRPMS(P11toP12.RightWheelLinearVelocity))
-    print_navigation_data(P11toP12.PointName, time.time())
+    print_navigation_data(Bot,P11toP12.PointName, time.time())
