@@ -32,59 +32,55 @@ def LinearSpeedToRPMS(LinearSpeed, Radius=Specs.WheelRadius, PI2=math.pi * 2, Se
 
 import time
 
-def TurnToPosition(heading_target, tolerance=2):
-    # Get the current heading from the IMU
-    poscurrent = Bot.get_heading()
-    turn_angle = heading_target - poscurrent  # Calculate the angle difference
+import time
 
-    # Normalize the turn_angle to be between -180 and 180 degrees
-    if turn_angle > 180:
-        turn_angle -= 360
-    elif turn_angle <= -180:
-        turn_angle += 360
+def turn_to(target_heading, tolerance=2):
+    """
+    Turn the robot in place to the absolute heading (0=East, 90=North, 180=West, 270=South).
+    Uses compass and wheels. Angles are in degrees.
+    """
+    # Read current heading (degrees from East, CCW)
+    current = Bot.get_heading()
 
-    # Check if the robot is already at the target heading (within tolerance)
-    if abs(turn_angle) <= tolerance:
-        print(f"Robot is already at the target heading: {heading_target} degrees.")
-        return  # No need to turn
+    # Compute shortest turn error (-180, 180]
+    error = target_heading - current
+    if error > 180:
+        error -= 360
+    elif error <= -180:
+        error += 360
 
-    # Proportional control setup (turning speed depends on error)
-    max_speed = 50  # Maximum speed (adjustable)
-    proportional_gain = 1.0  # Adjust this gain for smoother turns (higher = faster turns)
+    # Decide direction (+ = CCW, - = CW)
+    direction = 1 if error > 0 else -1
 
-    while abs(turn_angle) > tolerance:  # While the turn angle is not within tolerance
-        current_heading = Bot.get_heading()  # Update the current heading
-        turn_angle = heading_target - current_heading  # Recalculate turn angle
+    # Turn until aligned within a small tolerance
+    start_time = time.time()  # Start timer to calculate turn time
+    while True:
+        current = Bot.get_heading()
+        err = target_heading - current
 
-        # Normalize turn angle to be between -180 and 180 degrees
-        if turn_angle > 180:
-            turn_angle -= 360
-        elif turn_angle <= -180:
-            turn_angle += 360
+        # Normalize error between -180 and 180 degrees
+        if err > 180:
+            err -= 360
+        elif err <= -180:
+            err += 360
 
-        # Calculate the proportional speed based on the error (turn_angle)
-        turn_speed = proportional_gain * abs(turn_angle)
-        turn_speed = min(turn_speed, max_speed)  # Cap the speed to the max value
+        # Stop if within tolerance
+        if abs(err) < tolerance:
+            Bot.stop_motors()
+            end_time = time.time()  # End timer once aligned
+            time_taken = end_time - start_time  # Calculate time taken
+            print(f"Robot reached target heading: {target_heading} degrees in {time_taken:.2f} seconds.")
+            return
 
-        # Print out debugging information
-        print(f"Current Heading: {current_heading}° | Turn Angle: {turn_angle}° | Speed: {turn_speed}")
+        # Turn in place: left wheel opposite of right wheel
+        # Use proportional control for smooth turning (increase speed if error is large)
+        speed = 2.0 * direction  # Adjust this value as needed for faster/slower turns
+        Bot.set_left_motor_speed(-speed)
+        Bot.set_right_motor_speed(speed)
 
-        # Rotate the robot based on the direction of the turn
-        if turn_angle > 0:
-            # Turn counterclockwise (CCW)
-            Bot.set_left_motor_speed(turn_speed)  # Left motor turns forward
-            Bot.set_right_motor_speed(-turn_speed)  # Right motor turns backward
-        else:
-            # Turn clockwise (CW)
-            Bot.set_left_motor_speed(-turn_speed)  # Left motor turns backward
-            Bot.set_right_motor_speed(turn_speed)  # Right motor turns forward
+        time.sleep(0.01)  # Small sleep to allow motor response and control loop
 
-        # Allow some time for the motors to adjust
-        time.sleep(0.05)  # Reduce sleep time for faster responsiveness
 
-    # Stop the motors once the target heading is reached
-    Bot.stop_motors()
-    print(f"Robot has reached the target heading: {heading_target} degrees.")
 class Waypoints(Specs):
     TotalTime = 0.0
     TotalPathLength = 0.0
