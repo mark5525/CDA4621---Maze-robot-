@@ -30,7 +30,7 @@ def LinearSpeedToRPMS(LinearSpeed, Radius=Specs.WheelRadius, PI2=math.pi * 2, Se
     return ((LinearSpeed * Seconds) / (PI2 * Radius))
 
 
-def TurnToPosition(heading_target, tolerance=2):
+def TurnToPosition(heading_target, tolerance= 2):
     poscurrent = Bot.get_heading()  # Get the current heading from the IMU
     turn_angle = (heading_target - poscurrent)  # Calculate the angle difference
 
@@ -49,7 +49,7 @@ def TurnToPosition(heading_target, tolerance=2):
     turn_direction = 1 if turn_angle > 0 else -1
 
     # Apply a proportional control to turn the robot smoothly (you can adjust the turn speed as needed)
-    turn_speed = 2 * turn_direction  # You can adjust the constant for speed
+    turn_speed = 15 * turn_direction  # You can adjust the constant for speed
 
     while abs(turn_angle) > tolerance:  # While the turn angle is not within tolerance
         current_heading = Bot.get_heading()  # Update the current heading
@@ -63,10 +63,10 @@ def TurnToPosition(heading_target, tolerance=2):
 
         # Rotate the robot to adjust heading
         if turn_angle > 0:
-            Bot.set_left_motor_speed(turn_speed)  # Turn counterclockwise
+            Bot.set_left_motor_speed(-turn_speed)  # Turn counterclockwise (left motor inverted)
             Bot.set_right_motor_speed(-turn_speed)
         else:
-            Bot.set_left_motor_speed(-turn_speed)  # Turn clockwise
+            Bot.set_left_motor_speed(turn_speed)  # Turn clockwise (left motor inverted)
             Bot.set_right_motor_speed(turn_speed)
 
         # Allow some time for the motors to adjust
