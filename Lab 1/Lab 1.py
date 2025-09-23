@@ -28,12 +28,6 @@ class Specs:
 
 def LinearSpeedToRPMS(LinearSpeed, Radius=Specs.WheelRadius, PI2=math.pi * 2, Seconds=60):
     return ((LinearSpeed * Seconds) / (PI2 * Radius))
-
-
-import time
-
-import time
-
 def TurnToPosition(target_heading, tolerance=2):
     """
     Turn the robot in place to the absolute heading (0=East, 90=North, 180=West, 270=South).
@@ -160,7 +154,6 @@ if __name__ == "__main__":
     P0toP1.DistanceTraveled = StraightLineFormula(p0[0], p1[0], p0[1], p1[1])
     P0toP1.WaypointTotals()
 
-    P0toP1.PrintAll()
     # p1 to p2
     P1toP2 = Waypoints()
     P1toP2.PointName = "P1 to P2"
@@ -168,7 +161,6 @@ if __name__ == "__main__":
     P1toP2.RightWheelLinearVelocity = InnerCircle(P1toP2.RobotLinearVelocity, 0.5, Specs.CarMidWidth)
     P1toP2.DistanceTraveled = ArcFormula(0.5, math.pi / 2)
     P1toP2.WaypointTotals()
-    P1toP2.PrintAll()
     # p2 to p3
     P2toP3 = Waypoints()
     P2toP3.PointName = "P2 to P3"
@@ -201,7 +193,6 @@ if __name__ == "__main__":
     P5toP6.DistanceTraveled = StraightLineFormula(p5[0], p6[0], p5[1], p6[1])
     P5toP6.Flag = 1
     P5toP6.WaypointTotals()
-    P5toP6.PrintAll()
     # P6 to P7
     P6toP7 = Waypoints()
     P6toP7.PointName = "P6 to P7"
@@ -211,7 +202,6 @@ if __name__ == "__main__":
     # change flag direction
     P6toP7.Flag = 1
     P6toP7.WaypointTotals()
-    P6toP7.PrintAll()
     # P7 to P8
     P7toP8 = Waypoints()
     P7toP8.PointName = "P7 to P8"
@@ -224,8 +214,7 @@ if __name__ == "__main__":
     P8toP9.PointName = "P8 to P9"
     P8toP9.LeftWheelLinearVelocity = P8toP9.RobotLinearVelocity
     P8toP9.RightWheelLinearVelocity = P8toP9.RobotLinearVelocity
-    P8toP9.TurnDistance = (Specs.CarMidWidth * (3 * math.pi) / 2)
-    P8toP9.PrintAll()
+    P8toP9.TurnDistance = (Specs.CarMidWidth * (math.pi / 2))
     # P9 to P10
     P9toP10 = Waypoints()
     P9toP10.PointName = "P7 to P8"
@@ -233,7 +222,6 @@ if __name__ == "__main__":
     P9toP10.RightWheelLinearVelocity = P9toP10.RobotLinearVelocity
     P9toP10.Flag = 1
     P9toP10.DistanceTraveled = StraightLineFormula(p9[0], p10[0], p9[1], p10[1])
-    P9toP10.PrintAll()
     # P10 to P11
     P10toP11 = Waypoints()
     P10toP11.PointName = "P10 to P11"
@@ -241,8 +229,6 @@ if __name__ == "__main__":
     P10toP11.RightWheelLinearVelocity = InnerCircle(P10toP11.RobotLinearVelocity, 1, Specs.CarMidWidth)
     P10toP11.DistanceTraveled = ArcFormula(1, (math.pi / 2))
     P10toP11.WaypointTotals()
-    P10toP11.PrintAll()
-
     # P11 to P12
     P11toP12 = Waypoints()
     P11toP12.PointName = "P11 to P12"
@@ -256,36 +242,47 @@ if __name__ == "__main__":
     # p0 to p1
     Bot.run_motors_for_seconds(P1toP2.SegmentTime, LinearSpeedToRPMS(P0toP1.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P0toP1.RightWheelLinearVelocity))
-
+    P0toP1.PrintDuringNavigation()
     # p1 to p2
     Bot.run_motors_for_seconds(P1toP2.SegmentTime, LinearSpeedToRPMS(P1toP2.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P1toP2.RightWheelLinearVelocity))
+    P1toP2.PrintDuringNavigation()
     # p2 to p3
     Bot.run_motors_for_seconds(P2toP3.SegmentTime, LinearSpeedToRPMS(P2toP3.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P2toP3.RightWheelLinearVelocity))
+    P2toP3.PrintDuringNavigation()
     # p3 to p4
     Bot.run_motors_for_seconds(P3toP4.SegmentTime, LinearSpeedToRPMS(P3toP4.LeftWheelLinearVelocity),
                                LinearSpeedToRPMS(P3toP4.RightWheelLinearVelocity))
+    P3toP4.PrintDuringNavigation()
     # p4 to p5
 
     TurnToPosition(315)
     Bot.run_motors_for_seconds(P4toP5.SegmentTime, LinearSpeedToRPMS(P4toP5.LeftWheelLinearVelocity), LinearSpeedToRPMS(P4toP5.RightWheelLinearVelocity))
+    P4toP5.PrintDuringNavigation()
     #p5 to p6
     TurnToPosition(0)
     Bot.run_motors_for_seconds(P5toP6.SegmentTime, LinearSpeedToRPMS(P5toP6.LeftWheelLinearVelocity), LinearSpeedToRPMS(P5toP6.RightWheelLinearVelocity))
+    P5toP6.PrintDuringNavigation()
     #p6 to p7
     TurnToPosition(90)
     Bot.run_motors_for_seconds(P6toP7.SegmentTime, LinearSpeedToRPMS(P6toP7.LeftWheelLinearVelocity), LinearSpeedToRPMS(P6toP7.RightWheelLinearVelocity))
+    P6toP7.PrintDuringNavigation()
     #p7 to p8
     TurnToPosition(180)
     Bot.run_motors_for_seconds(P7toP8.SegmentTime, LinearSpeedToRPMS(P7toP8.LeftWheelLinearVelocity), LinearSpeedToRPMS(P7toP8.RightWheelLinearVelocity))
+    P7toP8.PrintDuringNavigation()
     #p8 to p9
     TurnToPosition(90)
     Bot.run_motors_for_seconds(P8toP9.SegmentTime, LinearSpeedToRPMS(P8toP9.LeftWheelLinearVelocity), LinearSpeedToRPMS(P8toP9.RightWheelLinearVelocity))
+    P8toP9.PrintDuringNavigation()
     #p9 to p10
     TurnToPosition(180)
     Bot.run_motors_for_seconds(P9toP10.SegmentTime, LinearSpeedToRPMS(P9toP10.LeftWheelLinearVelocity), LinearSpeedToRPMS(P9toP10.RightWheelLinearVelocity))
+    P9toP10.PrintDuringNavigation()
     #p10 to p11
     Bot.run_motors_for_seconds(P10toP11.SegmentTime, LinearSpeedToRPMS(P10toP11.LeftWheelLinearVelocity), LinearSpeedToRPMS(P10toP11.RightWheelLinearVelocity))
+    P10toP11.PrintDuringNavigation()
     #p11 to p12
     Bot.run_motors_for_seconds(P11toP12.SegmentTime, LinearSpeedToRPMS(P11toP12.LeftWheelLinearVelocity), LinearSpeedToRPMS(P11toP12.RightWheelLinearVelocity))
+    P11toP12.PrintDuringNavigation()
