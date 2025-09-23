@@ -206,7 +206,8 @@ if __name__ == "__main__":
     P8toP9.PointName = "P8 to P9"
     P8toP9.LeftWheelLinearVelocity = P8toP9.RobotLinearVelocity
     P8toP9.RightWheelLinearVelocity = P8toP9.RobotLinearVelocity
-    P8toP9.TurnDistance = Specs.CarMidWidth * (math.pi / 2)
+    P8toP9.Flag = 1
+    P8toP9.DistanceTraveled = StraightLineFormula(p8[0], p9[0], p8[1], p9[1])
     # P9 to P10
     P9toP10 = Waypoints()
     P9toP10.PointName = "P7 to P8"
