@@ -40,41 +40,38 @@ def turn_to(target_heading, tolerance=2):
     Uses compass and wheels. Angles are in degrees.
     """
     # Read current heading (degrees from East, CCW)
-    current = Bot.get_heading()
+    poscurrent = Bot.get_heading()
+    turn_angle = target_heading - poscurrent
+    if turn_angle > 180:
+        turn_angle -= 360
+    elif turn_angle <= -180:
+        turn_angle += 360
 
-    # Compute shortest turn error (-180, 180]
-    error = target_heading - current
-    if error > 180:
-        error -= 360
-    elif error <= -180:
-        error += 360
-
-    # Decide direction (+ = CCW, - = CW)
-    direction = 1 if error > 0 else -1
+    if abs(turn_angle) <= tolerance:
+        print("Robot is already at the target heading.")
+        return  # No need to turn
+    turn_direction = 1 if turn_angle > 0 else -1
 
     # Turn until aligned within a small tolerance
-    start_time = time.time()  # Start timer to calculate turn time
     while True:
         current = Bot.get_heading()
-        err = target_heading - current
+        finding_angle = target_heading - current
 
         # Normalize error between -180 and 180 degrees
-        if err > 180:
-            err -= 360
-        elif err <= -180:
-            err += 360
+        if finding_angle > 180:
+            finding_angle -= 360
+        elif finding_angle <= -180:
+            finding_angle += 360
 
         # Stop if within tolerance
-        if abs(err) < tolerance:
+        if abs(finding_angle) < tolerance:
             Bot.stop_motors()
-            end_time = time.time()  # End timer once aligned
-            time_taken = end_time - start_time  # Calculate time taken
-            print(f"Robot reached target heading: {target_heading} degrees in {time_taken:.2f} seconds.")
+            print(f"Robot reached target heading: {target_heading} degrees")
             return
 
         # Turn in place: left wheel opposite of right wheel
         # Use proportional control for smooth turning (increase speed if error is large)
-        speed = 2.0 * direction  # Adjust this value as needed for faster/slower turns
+        speed = 2.0 * turn_direction  # Adjust this value as needed for faster/slower turns
         Bot.set_left_motor_speed(-speed)
         Bot.set_right_motor_speed(speed)
 
