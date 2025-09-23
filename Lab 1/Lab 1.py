@@ -37,7 +37,7 @@ def TurnToPosition(target_heading, tolerance=2):
         turn_angle += 360
 
     if abs(turn_angle) <= tolerance:
-        print("Robot is already at the target heading.")
+        print("Robot is already at the target heading.\n")
         return  # No need to turn
     turn_direction = 1 if turn_angle > 0 else -1
 
@@ -52,7 +52,7 @@ def TurnToPosition(target_heading, tolerance=2):
 
         if abs(finding_angle) < tolerance:
             Bot.stop_motors()
-            print(f"Robot reached target heading: {target_heading} degrees")
+            print(f"Robot reached target heading: {target_heading} degrees\n")
             return
 
         speed = 2.0 * turn_direction
