@@ -118,10 +118,11 @@ class Waypoints(Specs):
               f"Total travel time is {Waypoints.GetTime():.2f} seconds\n")
 
     def PrintDuringNavigation(self):
-        print(f"Right wheel linear velocity: {self.RightWheelLinearVelocity:.3f} meters/sec "
-              f"Left wheel linear velocity: {self.LeftWheelLinearVelocity:.3f} meters/sec"
-              f"Distance: {self.DistanceTraveled:.3f} meters"
-              f"Time: {self.SegmentTime:.3f} seconds")
+        print(f"for point :{self.PointName}\n"
+              f"The right wheel angular velocity is: {self.RightWheelLinearVelocity:.2f} meters/sec.\n"
+              f"The left wheel {self.LeftWheelLinearVelocity:.2f} meters/sec.\n"
+              f"Segment distance {self.DistanceTraveled:.2f} meters\n"
+              f"and it took {self.SegmentTime:.2f} seconds to travel.\n")
 
 
 # kinematics calculations
