@@ -10,5 +10,4 @@ if __name__ == "__main__":
     #if wall_reading == 'right':
 
 
-
     #if wall_reading == 'left':
