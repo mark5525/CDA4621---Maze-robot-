@@ -17,7 +17,7 @@ def forward_PID(Bot, forward_distance = 0.5, kp = 3):
     forward_v = Bot.saturation(kp *e)
     return forward_v
 
-def side_PID(robot, side_distance = 0.1, kp = 3, side = "left"):
+def side_PID(Bot, side_distance = 0.1, kp = 3, side = "left"):
     if side == "left":
         actual = min(Bot.get_lidar_range_image()[90,115])
         e = abs(actual - side_distance)
