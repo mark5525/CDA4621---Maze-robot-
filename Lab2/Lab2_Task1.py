@@ -1,24 +1,26 @@
 from HamBot.src.robot_systems.robot import HamBot
 import math
 
-def saturation(robot,v):
-    if v >robot.max_motor_velocity:
-        return robot.max_motor_velocity
-    elif v < -robot.max_motor_velocity:
-        return -robot.max_motor_velocity
+def saturation(Bot,v):
+    if v > Bot.max_motor_velocity:
+        return Bot.max_motor_velocity
+    elif v < -Bot.max_motor_velocity:
+        return -Bot.max_motor_velocity
     else:
         return v
 
 
-def forward_PID(Bot, forward_distance = 0.5, kp = 3):
-    actual = min(Bot.get_lidar_range_image()[175,185])
+def forward_PID(Bot, forward_distance = 0.6, kp = 3):
+    scan1 = Bot.get_range_image()
+    actual = min(scan1[180])
     e = actual - forward_distance
     forward_v = Bot.saturation(kp *e)
     return forward_v
 
 def side_PID(Bot, side_distance = 0.1, kp = 3, side = "left"):
     if side == "left":
-        actual = min(Bot.get_lidar_range_image()[90,115])
+        scan2 = Bot.get_range_image()
+        actual = min(scan2[270])
         e = abs(actual - side_distance)
         return kp * e
 
