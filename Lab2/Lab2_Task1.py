@@ -2,60 +2,48 @@ from HamBot.src.robot_systems.robot import HamBot
 from HamBot.src.robot_systems.lidar import Lidar
 import math
 
-def forward_PID(self, forward_distance = 0.5, kp = 3):
-    actual = min(self.get_lidar_range_image()[175:185])
+def saturation(robot,v):
+    if v >robot.max_motor_velocity:
+        return robot.max_motor_velocity
+    elif v < -robot.max_motor_velocity:
+        return -robot.max_motor_velocity
+    else:
+        return v
+
+
+def forward_PID(Bot, forward_distance = 0.5, kp = 3):
+    actual = min(Bot.get_lidar_range_image()[175,185])
     e = actual - forward_distance
-    forward_v = self.sat(kp * e)
+    forward_v = Bot.saturation(kp *e)
     return forward_v
 
-def side_PID(self, side_distance = 0.1, kp = 3, side = "left"):
-    if side == "Left":
-        actual = min(self.get_lidar_range_image()[90:115])
+def side_PID(Bot, side_distance = 0.1, kp = 3, side = "left"):
+    if side == "left":
+        actual = min(Bot.get_lidar_range_image()[90,115])
         e = abs(actual - side_distance)
         return kp * e
-
-def rotate(self, end_bearing, k_p = .5):
-    delta = end_bearing - self.get_compass_reading()
-    velocity = self.velocity_saturation(k_p * abs(delta), suppress = True)
-    if -180 <= delta <= 0 or 180 < delta <= 360:
-        self.set_left_motor_velocity(1 * velocity)
-        self.set_right_motor_velocity(-1 * velocity)
-    elif 0 < delta <= 180 or -360 <= delta < -180:
-        self.set_left_motor_velocity(-1 * velocity)
-        self.set_right_motor_velocity(1 * velocity)
-
-def calculate_wheel_distance_traveled(self, starting_encoder_position):
-    current_encoder_readings = self.get_encoder_readings()
-    differences = list(map(operator.sub, current_encoder_readings, starting_encoder_position))
-    average_differences = sum(differences) / len(differences)
-    average_distance = average_differences * self.wheel_radius
-    return average_distance
-
-
-
-
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
 
-    while Bot.experiment_supervisor.step(Bot.timestep) != -1:
-        forward_distance = Bot.get_front_distance()
-        if forward_distance < Bot.min_forward_wall_distance:
-            rotate(-45)
-            forward_velocity = forward_PID()
+    while Bot.experiment_supervisor.step(Bot.timestep) != 1:
+        forward_distance = min(Bot.get_lidar_range_image()[175: 180])
+        forward_velocity = forward_PID(kp=3)
+        delta_velocity = side_PID(kp=0.1)
+        side_distance = abs(Bot.get_lidar_range_image()[90:115])
+        # too close
+        if side_distance < 2:
+            left_v = forward_velocity
+            right_v = saturation(forward_velocity - delta_velocity)
+        elif side_distance > 2:
+            right_v = forward_velocity
+            right_v = saturation(forward_velocity - delta_velocity)
+        else:
             right_v = forward_velocity
             left_v = forward_velocity
-            if side == "left":
-                delta_velocity = side_PID(side = "left")
-                side_distance = Bot.get_left_side_distance()
-                if side_distance < Bot.desired_wall_follow_distance():
-                    left_v = Bot.set(left_v * delta_velocity)
-                    right_v = Bot.set(right_v * delta_velocity)
-                elif side_distance > Bot.desired_wall_follow_distance():
-                    right_v = Bot.set(right_v * delta_velocity)
-                    left_v = Bot.set(left_v * delta_velocity)
-        else:
-            pass
+
+        Bot.set_left_motor_velocity(left_v)
+        Bot.set_right_motor_velocity(right_v)
 
 
 
