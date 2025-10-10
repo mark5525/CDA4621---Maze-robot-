@@ -27,6 +27,8 @@ def side_PID(Bot, side_distance = 0.1, kp = 3, side = "left"):
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     scan = Bot.get_range_image()
+    forward_distance = min(scan[180])
+    print(forward_distance)
 
     while min(scan[180]) != 0.6:
         forward_distance = min(scan[180])
