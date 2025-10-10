@@ -1,6 +1,6 @@
 from HamBot.src.robot_systems.robot import HamBot
 import math
-
+Bot = HamBot(lidar_enabled=True, camera_enabled=False)
 def saturation(Bot,v):
     if v > Bot.max_motor_velocity:
         return Bot.max_motor_velocity
@@ -25,7 +25,6 @@ def side_PID(Bot, side_distance = 0.1, kp = 3, side = "left"):
         return kp * e
 
 if __name__ == "__main__":
-    Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     scan = Bot.get_range_image()
     print(scan)
 
