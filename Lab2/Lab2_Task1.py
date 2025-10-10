@@ -25,7 +25,7 @@ def side_PID(Bot, side_distance = 0.1, kp = 3, side = "left"):
         return kp * e
 
 if __name__ == "__main__":
-    Bot = HamBot(lidar_enabled=False, camera_enabled=False)
+    Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     scan = Bot.get_range_image()
     print(scan)
 
