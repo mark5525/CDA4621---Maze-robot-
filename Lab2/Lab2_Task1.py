@@ -30,14 +30,15 @@ if __name__ == "__main__":
 
     while min(scan[180]) != 0.6:
         forward_distance = min(scan[180])
+        print(forward_distance)
         forward_velocity = forward_PID(kp=3)
         delta_velocity = side_PID(kp=0.1)
         side_distance = min(scan[90])
         # too close
-        if side_distance < 2:
+        if side_distance < .3:
             left_v = forward_velocity
             right_v = saturation(forward_velocity - delta_velocity)
-        elif side_distance > 2:
+        elif side_distance > .3:
             right_v = forward_velocity
             right_v = saturation(forward_velocity - delta_velocity)
         else:
