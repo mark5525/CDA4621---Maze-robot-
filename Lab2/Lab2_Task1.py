@@ -2,52 +2,20 @@ from HamBot.src.robot_systems.robot import HamBot
 import math
 
 def saturation(Bot,v):
-    if v > Bot.max_motor_velocity:
-        return Bot.max_motor_velocity
-    elif v < -Bot.max_motor_velocity:
-        return -Bot.max_motor_velocity
-    else:
-        return v
-
 
 def forward_PID(Bot, forward_distance = 0.6, kp = 3):
-    scan1 = Bot.get_range_image()
-    actual = min(scan1[180])
-    e = actual - forward_distance
-    forward_v = Bot.saturation(kp *e)
-    return forward_v
 
-def side_PID(Bot, side_distance = 0.1, kp = 3, side = "left"):
-    if side == "left":
-        scan2 = Bot.get_range_image()
-        actual = min(scan2[270])
-        e = abs(actual - side_distance)
-        return kp * e
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
-    scan = Bot.get_range_image()
-    print(scan)
+    wheel_radius = 0.03
 
-    while min(scan[180]) != 0.6:
-        forward_distance = min(scan[180])
-        print(forward_distance)
+    while True:
+        forward_distance = min(Bot.get_range_image()[175: 180])
+        print("Forward distance: ", forward_distance)
         forward_velocity = forward_PID(kp=3)
-        delta_velocity = side_PID(kp=0.1)
-        side_distance = min(scan[90])
         # too close
-        if side_distance < .3:
-            left_v = forward_velocity
-            right_v = saturation(forward_velocity - delta_velocity)
-        elif side_distance > .3:
-            right_v = forward_velocity
-            right_v = saturation(forward_velocity - delta_velocity)
-        else:
-            right_v = forward_velocity
-            left_v = forward_velocity
-
-        Bot.set_left_motor_velocity(left_v)
-        Bot.set_right_motor_velocity(right_v)
+        if forward_distance :
 
 
 
