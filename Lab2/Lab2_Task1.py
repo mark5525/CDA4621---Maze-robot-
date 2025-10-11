@@ -10,7 +10,7 @@ if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     wheel_radius = 0.03
     i = 0
-    while i != 10:
+    while True:
         forward_distance = min(Bot.get_range_image()[175: 180])
         print("Forward distance: ", forward_distance)
         i = i + 1
