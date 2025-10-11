@@ -26,7 +26,7 @@ if __name__ == "__main__":
     Bot.max_motor_speed = 50
 
     while True:
-        forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0])
+        forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         forward_velocity = forward_PID(Bot, f_distance = 600, kp=3)
 
         if forward_distance > 600:
