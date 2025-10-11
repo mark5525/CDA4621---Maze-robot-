@@ -3,7 +3,7 @@ import math
 
 
 def saturation(Bot,rpm):
-    max_rpm = getattr(Bot, "max_motor_speed", 50)
+    max_rpm = getattr(Bot, "max_motor_speed", 60)
     if rpm > max_rpm:
         return max_rpm
     if rpm < -max_rpm:
@@ -23,7 +23,7 @@ def forward_PID(Bot, f_distance = 600, kp = 0.2):
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
-    Bot.max_motor_speed = 50
+    Bot.max_motor_speed = 60
 
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
