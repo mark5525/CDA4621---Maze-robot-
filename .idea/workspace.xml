@@ -4,12 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="53489aae-0561-4fb1-988e-73780e1d2459" name="Changes" comment="hi">
+    <list default="true" id="53489aae-0561-4fb1-988e-73780e1d2459" name="Changes" comment="adding image of lab1">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/FAIRIS-Lite" beforeDir="false" afterPath="$PROJECT_DIR$/FAIRIS-Lite" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/HamBot" beforeDir="false" afterPath="$PROJECT_DIR$/HamBot" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/HamBot/src/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/HamBot/src/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Lab 1/Lab 1.py" beforeDir="false" afterPath="$PROJECT_DIR$/Lab 1/Lab 1.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Lab2/Lab2_Task1.py" beforeDir="false" afterPath="$PROJECT_DIR$/Lab2/Lab2_Task1.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -48,9 +47,6 @@
     <option name="stateVersion" value="1" />
   </component>
   <component name="ProblemsViewState">
-    <hideBySeverity>
-      <option value="200" />
-    </hideBySeverity>
     <option name="selectedTabId" value="CurrentFile" />
   </component>
   <component name="ProjectColorInfo">{
@@ -64,16 +60,16 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ASKED_ADD_EXTERNAL_FILES&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/halim/OneDrive - University of South Florida/Fall 2025/CDA4621&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;reference.settings.ide.settings.new.ui&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ASKED_ADD_EXTERNAL_FILES": "true",
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "git-widget-placeholder": "master",
+    "last_opened_file_path": "C:/Users/halim/OneDrive - University of South Florida/Fall 2025/CDA4621",
+    "settings.editor.selected.configurable": "reference.settings.ide.settings.new.ui"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\halim\OneDrive - University of South Florida\Fall 2025\CDA4621\Lab 1" />
@@ -142,7 +138,23 @@
       <option name="project" value="LOCAL" />
       <updated>1758591518281</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="adding image of lab1">
+      <option name="closed" value="true" />
+      <created>1759434648368</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1759434648368</updated>
+    </task>
+    <task id="LOCAL-00005" summary="adding image of lab1">
+      <option name="closed" value="true" />
+      <created>1759434833732</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1759434833732</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -181,6 +193,7 @@
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
     <MESSAGE value="hi" />
-    <option name="LAST_COMMIT_MESSAGE" value="hi" />
+    <MESSAGE value="adding image of lab1" />
+    <option name="LAST_COMMIT_MESSAGE" value="adding image of lab1" />
   </component>
 </project>

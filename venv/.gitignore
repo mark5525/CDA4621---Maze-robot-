@@ -1,0 +1,18 @@
+# Environments
+.venv/
+venv/
+env/
+
+# Bytecode
+__pycache__/
+*.py[cod]
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# OS junk
+.DS_Store
+Thumbs.db
+/for\ exam.py
