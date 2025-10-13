@@ -77,7 +77,7 @@ def rotation(Bot, angle, pivot_rpm = 12, timeout_s = 6.0):
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
-    Bot.max_motor_speed = 60
+    Bot.max_motor_speed = 50
     side_follow = "left"
     desired_front_distance = 300
     desired_side_distance = 300
