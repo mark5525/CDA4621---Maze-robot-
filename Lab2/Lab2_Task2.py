@@ -54,10 +54,10 @@ def rotation(Bot, angle, k_p = 0.9, total_deg = 2.0, min_rpm = 10, timeout = 5.0
             return
         rpm = saturation(Bot, max(min_rpm, abs(k_p * e)))
         if e > 0:
-            Bot.set_left_motor_speed(-rpm)
+            Bot.set_left_motor_speed(+rpm)
             Bot.set_right_motor_speed(+rpm)
         else:
-            Bot.set_left_motor_speed(+rpm)
+            Bot.set_left_motor_speed(-rpm)
             Bot.set_right_motor_speed(-rpm)
         if timeout and (time.monotonic() - target0) > timeout:
             Bot.stop_motors()
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         if forward_distance < desired_front_distance:
-            rotation(Bot, -35 if side_follow == "left" else 35)
+            rotation(Bot, -45 if side_follow == "left" else 45)
         forward_velocity = forward_PID(Bot, f_distance=300, kp=3)
         right_v = forward_velocity
         left_v = forward_velocity
