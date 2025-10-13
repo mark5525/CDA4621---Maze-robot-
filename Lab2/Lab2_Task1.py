@@ -32,9 +32,11 @@ if __name__ == "__main__":
         if forward_distance > 610:
             Bot.set_left_motor_speed(forward_velocity)
             Bot.set_right_motor_speed(forward_velocity)
+            print(Bot.get_encoder_readings())
         elif forward_distance < 590:
             Bot.set_left_motor_speed(forward_velocity)
             Bot.set_right_motor_speed(forward_velocity)
+            print(Bot.get_encoder_readings())
         else:
             Bot.stop_motors()
             break
