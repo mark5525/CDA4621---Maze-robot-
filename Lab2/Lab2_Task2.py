@@ -120,7 +120,7 @@ if __name__ == "__main__":
             Bot.stop_motors()
             time.sleep(0.1)
             continue
-
+        
         forward_velocity = forward_PID(Bot, f_distance = corner_trigger, kp = 0.3)
 
         left_velocity, right_velocity, side_d, delta_v = curve_rotation(Bot, forward_rpm = forward_velocity, follow_side= follow_mode, s_set_mm = desired_side, band_mm = side_band, kp_side= 0.10)
