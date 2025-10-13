@@ -24,20 +24,18 @@ def forward_PID(Bot, f_distance = 300, kp = 0.2):
     forward_v = saturation(Bot, rpm_v)
     return forward_v
 
-def side_PID(Bot, side_follow, side_distance = 300, kp = 3):
+def side_PID(Bot, side_follow, side_distance = 300, kp = 0.10):
     if side_follow == "left":
         values = [d for d in Bot.get_range_image()[90:115] if d and d > 0]
-        if not values: return 0.0
-        actual = min(values)
-    elif side_follow == "right":
-        values = [d for d in Bot.get_range_image()[270:285] if d and d > 0]
-        if not values: return 0.0
-        actual = min(values)
     else:
+        values = [d for d in Bot.get_range_image()[270:285] if d and d > 0]
+    if not values:
         return 0.0
+    actual = min(values)
     e = actual - side_distance
     rpm_v = kp * e
     return saturation(Bot, rpm_v)
+
 
 def rotation(Bot, angle, pivot_rpm = 12, timeout_s = 6.0, desired_front_distance = 300, extra_clear = 150, consecutive_clear = 2):
     def _front_mm():
@@ -88,37 +86,25 @@ if __name__ == "__main__":
         forward_velocity = forward_PID(Bot, f_distance=300, kp=3)
         right_v = forward_velocity
         left_v = forward_velocity
-        if side_follow == "left":
-            delta_velocity = side_PID(Bot, side_follow = "left")
-            delta_velocity = max(-abs(forward_velocity) * 0.9, min(abs(forward_velocity) * 0.9, delta_velocity))
-            side_distance = min([a for a in Bot.get_range_image()[90:115] if a > 0] or [float("inf")])
-            if side_distance < desired_side_distance:
-                add_v = left_v + delta_velocity
-                left_v = saturation(Bot, add_v)
-                sub_v = right_v - delta_velocity
-                right_v = saturation(Bot, sub_v)
-            elif side_distance > desired_side_distance:
-                add_v = right_v + delta_velocity
-                right_v = saturation(Bot, add_v)
-                sub_v = left_v - delta_velocity
-                left_v = saturation(Bot, sub_v)
+        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance = desired_side_distance, kp = 0.10)
 
-        if side_follow == "right":
-            delta_velocity = side_PID(Bot, side_follow = "right")
-            side_distance = min([a for a in Bot.get_range_image()[270:285] if a > 0] or [float("inf")])
-            if side_distance < desired_side_distance:
-                add_v = right_v + delta_velocity
-                right_v = saturation(Bot, add_v)
-                sub_v = left_v - delta_velocity
-                left_v = saturation(Bot, sub_v)
-            elif side_distance > desired_side_distance:
-                add_v = left_v + delta_velocity
-                left_v = saturation(Bot, add_v)
-                sub_v = right_v - delta_velocity
-                right_v = saturation(Bot, sub_v)
+        lim = abs(forward_velocity) * 0.9
+        if delta_velocity > lim: delta_velocity = lim
+        if delta_velocity < -lim: delta_velocity = -lim
+
+        if side_follow == "left":
+            left_v = saturation(Bot, left_v - delta_velocity)
+            right_v = saturation(Bot, right_v + delta_velocity)
+        else:
+            left_v = saturation(Bot, left_v + delta_velocity)
+            right_v = saturation(Bot, right_v - delta_velocity)
 
         Bot.set_left_motor_speed(left_v)
         Bot.set_right_motor_speed(right_v)
+
+        time.sleep(0.05)  # ~20 Hz
+
+
 
 
 
