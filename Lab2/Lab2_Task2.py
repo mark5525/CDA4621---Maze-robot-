@@ -74,7 +74,7 @@ if __name__ == "__main__":
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         if forward_distance < desired_front_distance:
-            rotation(Bot, -45 if side_follow == "left" else 45)
+            rotation(Bot, -35 if side_follow == "left" else 35)
         forward_velocity = forward_PID(Bot, f_distance=300, kp=3)
         right_v = forward_velocity
         left_v = forward_velocity
