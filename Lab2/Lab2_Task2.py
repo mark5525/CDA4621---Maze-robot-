@@ -54,11 +54,11 @@ def rotation(Bot, angle, k_p = 0.9, total_deg = 2.0, min_rpm = 10, timeout = 5.0
             return
         rpm = saturation(Bot, max(min_rpm, abs(k_p * e)))
         if e > 0:
-            Bot.set_left_motor_speed(+rpm)
-            Bot.set_right_motor_speed(-rpm)
-        else:
             Bot.set_left_motor_speed(-rpm)
             Bot.set_right_motor_speed(+rpm)
+        else:
+            Bot.set_left_motor_speed(+rpm)
+            Bot.set_right_motor_speed(-rpm)
         if timeout and (time.monotonic() - target0) > timeout:
             Bot.stop_motors()
             return
