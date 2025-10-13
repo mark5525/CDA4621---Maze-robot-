@@ -26,42 +26,40 @@ def forward_PID(Bot, f_distance = 300, kp = 0.2):
 
 def side_PID(Bot, side_follow, side_distance = 300, kp = 3):
     if side_follow == "left":
-        actual = min(Bot.get_range_image()[90:115])
-        e = actual - side_distance
-        rpm_v = kp * e
-        forward_v = saturation(Bot, rpm_v)
-        return forward_v
+        values = [d for d in Bot.get_range_image()[90:115] if d and d > 0]
+        if not values: return 0.0
+        actual = min(values)
     elif side_follow == "right":
-        actual = min(Bot.get_range_image()[270:285])
-        e = actual - side_distance
-        rpm_v = kp * e
-        forward_v = saturation(Bot,rpm_v)
-        return forward_v
-    return 0.0
+        values = [d for d in Bot.get_range_image()[270:285] if d and d > 0]
+        if not values: return 0.0
+        actual = min(values)
+    else:
+        return 0.0
+    e = actual - side_distance
+    rpm_v = kp * e
+    return saturation(Bot, rpm_v)
 
-def rotation(Bot, angle, pivot_rpm = 12, timeout_s = 6.0):
+def rotation(Bot, angle, pivot_rpm = 12, timeout_s = 6.0, desired_front_distance = 300, extra_clear = 150, consecutive_clear = 2):
     def _front_mm():
         scan = Bot.get_range_image()
-        vals = [d for d in scan[175:181] if d and d > 0]  # 175..180°
+        vals = [d for d in scan[175:191] if d and d > 0]
         return min(vals) if vals else float("inf")
 
-    start_front = _front_mm()
-    clear_mm = max(600, (start_front if start_front != float("inf") else 0) + 250)
-    needed_clear = 3
-    clear_count = 0
+    clear_thresh = desired_front_distance + extra_clear
+    clear_hits = 0
 
     rpm = saturation(Bot, abs(pivot_rpm))
 
     t0 = time.monotonic()
     while True:
         fwd = _front_mm()
-        if fwd >= clear_mm:
-            clear_count += 1
-            if clear_count >= needed_clear:
+        if fwd >= clear_thresh:
+            clear_hits += 1
+            if clear_hits >= consecutive_clear:
                 Bot.stop_motors()
                 return
         else:
-            clear_count = 0
+            clear_hits = 0
         if angle < 0:
             Bot.set_left_motor_speed(+rpm)
             Bot.set_right_motor_speed(-rpm)
@@ -92,6 +90,7 @@ if __name__ == "__main__":
         left_v = forward_velocity
         if side_follow == "left":
             delta_velocity = side_PID(Bot, side_follow = "left")
+            delta_velocity = max(-abs(forward_velocity) * 0.9, min(abs(forward_velocity) * 0.9, delta_velocity))
             side_distance = min([a for a in Bot.get_range_image()[90:115] if a > 0] or [float("inf")])
             if side_distance < desired_side_distance:
                 add_v = left_v + delta_velocity
