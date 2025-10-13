@@ -28,15 +28,16 @@ if __name__ == "__main__":
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         forward_velocity = forward_PID(Bot, f_distance = 600, kp=3)
+        print(forward_velocity)
 
         if forward_distance > 610:
             Bot.set_left_motor_speed(forward_velocity)
             Bot.set_right_motor_speed(forward_velocity)
-            print(Bot.get_encoder_readings())
+            print(forward_distance)
         elif forward_distance < 590:
             Bot.set_left_motor_speed(forward_velocity)
             Bot.set_right_motor_speed(forward_velocity)
-            print(Bot.get_encoder_readings())
+            print(forward_distance)
         else:
             Bot.stop_motors()
             break
