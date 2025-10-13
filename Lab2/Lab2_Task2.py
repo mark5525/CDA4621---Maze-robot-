@@ -63,10 +63,10 @@ def rotation(Bot, angle, pivot_rpm = 12, timeout_s = 6.0):
         else:
             clear_count = 0
         if angle < 0:
-            Bot.set_left_motor_speed(-rpm)
+            Bot.set_left_motor_speed(+rpm)
             Bot.set_right_motor_speed(-rpm)
         else:
-            Bot.set_left_motor_speed(+rpm)
+            Bot.set_left_motor_speed(-rpm)
             Bot.set_right_motor_speed(+rpm)
         if timeout_s and (time.monotonic() - t0) > timeout_s:
             Bot.stop_motors()
