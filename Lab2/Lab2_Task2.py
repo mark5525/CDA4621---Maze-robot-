@@ -90,6 +90,7 @@ if __name__ == "__main__":
         left_v = forward_velocity
         if side_follow == "left":
             delta_velocity = side_PID(Bot, side_follow = "left")
+            delta_velocity = max(-abs(forward_velocity) * 0.9, min(abs(forward_velocity) * 0.9, delta_velocity))
             side_distance = min([a for a in Bot.get_range_image()[90:115] if a > 0] or [float("inf")])
             if side_distance < desired_side_distance:
                 add_v = left_v + delta_velocity
