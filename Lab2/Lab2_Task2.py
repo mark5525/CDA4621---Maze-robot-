@@ -39,30 +39,41 @@ def side_PID(Bot, side_follow, side_distance = 300, kp = 3):
         return forward_v
     return 0.0
 
-def rotation(Bot, angle, k_p = 0.9, total_deg = 2.0, min_rpm = 10, timeout = 5.0):
-    def wrap(degree):
-        return ((degree + 180) % 360) - 180
+def rotation(Bot, angle, pivot_rpm = 12, timeout_s = 6.0):
+    def _front_mm():
+        scan = Bot.get_range_image()
+        vals = [d for d in scan[175:181] if d and d > 0]  # 175..180°
+        return min(vals) if vals else float("inf")
 
-    current = Bot.get_heading(fresh_within = 0.5, blocking = True, wait_timeout = 0.3)
-    target = (current + angle) % 360
-    target0 = time.monotonic()
+    start_front = _front_mm()
+    clear_mm = max(600, (start_front if start_front != float("inf") else 0) + 250)
+    needed_clear = 3
+    clear_count = 0
+
+    rpm = saturation(Bot, abs(pivot_rpm))
+
+    t0 = time.monotonic()
     while True:
-        heading = Bot.get_heading(fresh_within = 0.5, blocking = True, wait_timeout = 0.3)
-        e = wrap(target - heading)
-        if abs(e) > total_deg:
-            Bot.stop_motors()
-            return
-        rpm = saturation(Bot, max(min_rpm, abs(k_p * e)))
-        if e > 0:
-            Bot.set_left_motor_speed(+rpm)
-            Bot.set_right_motor_speed(+rpm)
+        fwd = _front_mm()
+        if fwd >= clear_mm:
+            clear_count += 1
+            if clear_count >= needed_clear:
+                Bot.stop_motors()
+                return
         else:
+            clear_count = 0
+        if angle < 0:
             Bot.set_left_motor_speed(-rpm)
             Bot.set_right_motor_speed(-rpm)
-        if timeout and (time.monotonic() - target0) > timeout:
+        else:
+            Bot.set_left_motor_speed(+rpm)
+            Bot.set_right_motor_speed(+rpm)
+        if timeout_s and (time.monotonic() - t0) > timeout_s:
             Bot.stop_motors()
             return
         time.sleep(0.02)
+
+
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
@@ -74,7 +85,8 @@ if __name__ == "__main__":
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         if forward_distance < desired_front_distance:
-            rotation(Bot, 45 if side_follow == "left" else -45)
+            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
+            continue
         forward_velocity = forward_PID(Bot, f_distance=300, kp=3)
         right_v = forward_velocity
         left_v = forward_velocity
