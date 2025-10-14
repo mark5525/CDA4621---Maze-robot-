@@ -73,7 +73,7 @@ def rotation(Bot, angle, pivot_rpm = 6, timeout_s = 4.0, desired_front_distance 
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
-    Bot.max_motor_speed = 50
+    Bot.max_motor_speed = 40
     side_follow = "left"
     desired_front_distance = 300
     desired_side_distance = 300
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         if forward_distance < desired_front_distance:
-            rotation(Bot, -80 if side_follow == "left" else 80, pivot_rpm = 12)
+            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
             continue
         forward_velocity = forward_PID(Bot, f_distance=300, kp=3)
         right_v = forward_velocity
