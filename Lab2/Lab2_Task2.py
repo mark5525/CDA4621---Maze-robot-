@@ -88,13 +88,13 @@ def search_for_wall(Bot, side_follow, search_angle=45, pivot_rpm=8, timeout_s=3.
             
         # Rotate in the direction that makes sense for wall following
         if side_follow == "left":
-            # When following left wall and lose it, turn right to find it
-            Bot.set_left_motor_speed(+rpm)
-            Bot.set_right_motor_speed(-rpm)
-        else:
-            # When following right wall and lose it, turn left to find it
+            # When following left wall and lose it, turn left to find it
             Bot.set_left_motor_speed(-rpm)
             Bot.set_right_motor_speed(+rpm)
+        else:
+            # When following right wall and lose it, turn right to find it
+            Bot.set_left_motor_speed(+rpm)
+            Bot.set_right_motor_speed(-rpm)
             
         if timeout_s and (time.monotonic() - t0) > timeout_s:
             Bot.stop_motors()
@@ -130,14 +130,14 @@ if __name__ == "__main__":
             wall_found = search_for_wall(Bot, side_follow, pivot_rpm=10, timeout_s=2.0)
             if not wall_found:
                 # If wall not found, do a larger turn to clear corner
-                rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm = 12)
+                rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
             continue
 
         # Emergency turn if too close to front wall
         if forward_distance < desired_front_distance:
-            # When following left wall and hit front wall, turn right (positive angle)
-            # When following right wall and hit front wall, turn left (negative angle)
-            rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm = 12)
+            # When following left wall and hit front wall, turn left (negative angle)
+            # When following right wall and hit front wall, turn right (positive angle)
+            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
             continue
 
         forward_velocity = forward_PID(Bot, f_distance=300, kp=0.4)  # Lower gain = smoother, less oscillation
