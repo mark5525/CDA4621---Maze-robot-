@@ -4,12 +4,9 @@ import math
 
 def saturation(bot, rpm):
     max_rpm = getattr(bot, "max_motor_speed", 60)
-    if rpm > max_rpm:
-        return max_rpm
-    if rpm < -max_rpm:
-        return -max_rpm
+    if rpm > max_rpm: return max_rpm
+    if rpm < -max_rpm: return -max_rpm
     return rpm
-
 
 def forward_PID(Bot, f_distance = 300, kp = 0.8):
     scan = Bot.get_range_image()
@@ -34,7 +31,6 @@ def side_PID(Bot, side_follow, side_distance = 300, kp = 0.10):
     rpm_v = kp * e
     return saturation(Bot, rpm_v)
 
-
 def rotation(Bot, angle, pivot_rpm = 6, timeout_s = 4.0, desired_front_distance = 300, extra_clear = 40, consecutive_clear = 1):
     def _front_mm():
         scan = Bot.get_range_image()
@@ -43,10 +39,9 @@ def rotation(Bot, angle, pivot_rpm = 6, timeout_s = 4.0, desired_front_distance 
 
     clear_thresh = desired_front_distance + extra_clear
     clear_hits = 0
-
     rpm = saturation(Bot, abs(pivot_rpm))
-
     t0 = time.monotonic()
+
     while True:
         fwd = _front_mm()
         if fwd >= clear_thresh:
@@ -56,18 +51,18 @@ def rotation(Bot, angle, pivot_rpm = 6, timeout_s = 4.0, desired_front_distance 
                 return
         else:
             clear_hits = 0
+
         if angle < 0:
             Bot.set_left_motor_speed(+rpm)
             Bot.set_right_motor_speed(-rpm)
         else:
             Bot.set_left_motor_speed(-rpm)
             Bot.set_right_motor_speed(+rpm)
+
         if timeout_s and (time.monotonic() - t0) > timeout_s:
             Bot.stop_motors()
             return
         time.sleep(0.01)
-
-
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
@@ -76,48 +71,83 @@ if __name__ == "__main__":
     desired_front_distance = 300
     desired_side_distance = 300
 
+    # curve tuning
+    OPENING_MARGIN = 120   # how much farther than setpoint counts as an "opening"
+    CURVE_GAIN     = 1.6   # boost to side correction during curve
+    CURVE_FWD_SCALE= 0.65  # reduce forward speed during curve
+    CREEP_MIN_RPM  = 6     # ensure we keep rolling
+
     while True:
         scan = Bot.get_range_image()
         forward_distance = min([a for a in scan[175:180] if a > 0] or [float("inf")])
-        
-        # Check if we can still see the side wall
+
+        # pick the follow-side slice once
         if side_follow == "left":
             side_values = [d for d in scan[90:115] if d and d > 0]
         else:
             side_values = [d for d in scan[270:285] if d and d > 0]
-        
-        # Turn when side wall disappears (reached corner)
-        if not side_values:
-            Bot.stop_motors()
-            time.sleep(0.1)  # Brief pause
-            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
+
+        # ---- CURVE AROUND CORNERS (instead of hard rotate) ----
+        opening = (not side_values) or (min(side_values) > desired_side_distance + OPENING_MARGIN)
+        if opening:
+            # base forward (slower) + boosted side correction
+            base_fwd = forward_PID(Bot, f_distance=desired_front_distance, kp=0.8)
+            base_fwd = saturation(Bot, max(CREEP_MIN_RPM, abs(base_fwd) * CURVE_FWD_SCALE))
+
+            delta_velocity = side_PID(Bot, side_follow=side_follow,
+                                      side_distance=desired_side_distance,
+                                      kp=0.10)
+            # boost the turn into the opening
+            delta_velocity = saturation(Bot, abs(delta_velocity) * CURVE_GAIN)
+
+            # clamp steering so it doesn't reverse a wheel
+            lim = abs(base_fwd) * 0.9
+            if delta_velocity >  lim: delta_velocity =  lim
+            if delta_velocity < -lim: delta_velocity = -lim
+
+            # apply using your same left/right pattern
+            left_v  = base_fwd
+            right_v = base_fwd
+            if side_follow == "left":
+                left_v  = saturation(Bot, left_v  - delta_velocity)
+                right_v = saturation(Bot, right_v + delta_velocity)
+            else:
+                left_v  = saturation(Bot, left_v  + delta_velocity)
+                right_v = saturation(Bot, right_v - delta_velocity)
+
+            Bot.set_right_motor_speed(right_v)
+            Bot.set_left_motor_speed(left_v)
+            time.sleep(0.05)
             continue
-        
-        # Emergency turn if too close to front wall
+        # -------------------------------------------------------
+
+        # Emergency turn if too close to front wall (keep as safety)
         if forward_distance < desired_front_distance:
             rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
             continue
-        
+
+        # Normal wall-follow
         forward_velocity = forward_PID(Bot, f_distance=300, kp=0.8)
         right_v = forward_velocity
-        left_v = forward_velocity
-        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance = desired_side_distance, kp = 0.1)
+        left_v  = forward_velocity
 
+        delta_velocity = side_PID(Bot, side_follow=side_follow,
+                                  side_distance=desired_side_distance, kp=0.10)
         lim = abs(forward_velocity) * 0.8
-        if delta_velocity > lim: delta_velocity = lim
+        if delta_velocity >  lim: delta_velocity =  lim
         if delta_velocity < -lim: delta_velocity = -lim
 
         if side_follow == "left":
-            left_v = saturation(Bot, left_v - delta_velocity)
+            left_v  = saturation(Bot, left_v  - delta_velocity)
             right_v = saturation(Bot, right_v + delta_velocity)
         else:
-            left_v = saturation(Bot, left_v + delta_velocity)
+            left_v  = saturation(Bot, left_v  + delta_velocity)
             right_v = saturation(Bot, right_v - delta_velocity)
 
         Bot.set_right_motor_speed(right_v)
         Bot.set_left_motor_speed(left_v)
-
         time.sleep(0.05)  # ~20 Hz
+
 
 
 
