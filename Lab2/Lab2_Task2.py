@@ -33,7 +33,7 @@ def side_PID(Bot, side_follow, side_distance = 300, kp = 0.10):
     e = actual - side_distance
     rpm_v = kp * e
     return saturation(Bot, rpm_v)
-#
+
 
 def rotation(Bot, angle, pivot_rpm = 6, timeout_s = 4.0, desired_front_distance = 300, extra_clear = 40, consecutive_clear = 1):
     def _front_mm():
@@ -117,7 +117,7 @@ if __name__ == "__main__":
         Bot.set_right_motor_speed(right_v)
         Bot.set_left_motor_speed(left_v)
 
-        time.sleep(0.05)  # ~20 Hz
+        time.sleep(0.01)  # ~20 Hz
 
 
 
