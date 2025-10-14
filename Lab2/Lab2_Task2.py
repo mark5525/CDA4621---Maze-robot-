@@ -24,7 +24,7 @@ def forward_PID(Bot, f_distance = 300, kp = 0.8):
 
 def side_PID(Bot, side_follow, side_distance = 300, kp = 0.10):
     if side_follow == "left":
-        values = [d for d in Bot.get_range_image()[90:115] if d and d > 0]
+        values = [d for d in Bot.get_range_image()[90:105] if d and d > 0]
     else:
         values = [d for d in Bot.get_range_image()[270:285] if d and d > 0]
     if not values:
@@ -82,7 +82,7 @@ if __name__ == "__main__":
         
         # Check if we can still see the side wall
         if side_follow == "left":
-            side_values = [d for d in scan[90:115] if d and d > 0]
+            side_values = [d for d in scan[90:105] if d and d > 0]
         else:
             side_values = [d for d in scan[270:285] if d and d > 0]
         
