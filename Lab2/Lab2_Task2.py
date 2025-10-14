@@ -67,7 +67,7 @@ def rotation(Bot, angle, pivot_rpm = 6, timeout_s = 4.0, desired_front_distance 
             return
         time.sleep(0.01)
 
-def search_for_wall(Bot, side_follow, search_angle=45, pivot_rpm=12, timeout_s=4.0):
+def search_for_wall(Bot, side_follow, search_angle=45, pivot_rpm=8, timeout_s=3.0):
     """Search for wall by rotating gradually until wall is found"""
     def _check_wall():
         scan = Bot.get_range_image()
@@ -122,22 +122,22 @@ if __name__ == "__main__":
 
         # Turn when side wall disappears (reached corner)
         # Also check if wall is too far away (likely lost it)
-        wall_lost = not side_values or (side_values and min(side_values) > 500)  # More sensitive threshold
+        wall_lost = not side_values or (side_values and min(side_values) > 600)  # Less aggressive threshold
         if wall_lost:
             Bot.stop_motors()
             time.sleep(0.1)  # Brief pause
-            # Search for wall with more aggressive parameters
-            wall_found = search_for_wall(Bot, side_follow, pivot_rpm=12, timeout_s=4.0)
+            # Search for wall with conservative parameters to avoid overshooting
+            wall_found = search_for_wall(Bot, side_follow, pivot_rpm=8, timeout_s=3.0)
             if not wall_found:
-                # If wall not found, do a larger turn to clear corner
-                rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 15)
+                # If wall not found, do a smaller turn to clear corner
+                rotation(Bot, -45 if side_follow == "left" else 45, pivot_rpm = 10)
             continue
 
         # Emergency turn if too close to front wall
         if forward_distance < desired_front_distance:
-            # When following left wall and hit front wall, turn left (negative angle)
-            # When following right wall and hit front wall, turn right (positive angle)
-            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
+            # When following left wall and hit front wall, turn right to continue following
+            # When following right wall and hit front wall, turn left to continue following
+            rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm = 10)
             continue
 
         forward_velocity = forward_PID(Bot, f_distance=300, kp=0.3)  # Reduced gain = smoother, less oscillation
