@@ -67,15 +67,15 @@ def rotation(Bot, angle, pivot_rpm = 6, timeout_s = 4.0, desired_front_distance 
             return
         time.sleep(0.01)
 
-def search_for_wall(Bot, side_follow, search_angle=45, pivot_rpm=8, timeout_s=3.0):
+def search_for_wall(Bot, side_follow, search_angle=45, pivot_rpm=12, timeout_s=4.0):
     """Search for wall by rotating gradually until wall is found"""
     def _check_wall():
         scan = Bot.get_range_image()
         if side_follow == "left":
-            side_values = [d for d in scan[85:110] if d and d > 0]
+            side_values = [d for d in scan[80:115] if d and d > 0]  # Expanded range
         else:
-            side_values = [d for d in scan[265:290] if d and d > 0]
-        return side_values and min(side_values) < 600  # Wall found if distance < 600mm
+            side_values = [d for d in scan[260:295] if d and d > 0]  # Expanded range
+        return side_values and min(side_values) < 700  # More generous threshold
     
     rpm = saturation(Bot, abs(pivot_rpm))
     t0 = time.monotonic()
@@ -122,15 +122,15 @@ if __name__ == "__main__":
 
         # Turn when side wall disappears (reached corner)
         # Also check if wall is too far away (likely lost it)
-        wall_lost = not side_values or (side_values and min(side_values) > 600)  # Reduced threshold
+        wall_lost = not side_values or (side_values and min(side_values) > 500)  # More sensitive threshold
         if wall_lost:
             Bot.stop_motors()
             time.sleep(0.1)  # Brief pause
-            # Search for wall instead of just turning 90 degrees
-            wall_found = search_for_wall(Bot, side_follow, pivot_rpm=10, timeout_s=2.0)
+            # Search for wall with more aggressive parameters
+            wall_found = search_for_wall(Bot, side_follow, pivot_rpm=12, timeout_s=4.0)
             if not wall_found:
                 # If wall not found, do a larger turn to clear corner
-                rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
+                rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 15)
             continue
 
         # Emergency turn if too close to front wall
@@ -140,12 +140,12 @@ if __name__ == "__main__":
             rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
             continue
 
-        forward_velocity = forward_PID(Bot, f_distance=300, kp=0.4)  # Lower gain = smoother, less oscillation
+        forward_velocity = forward_PID(Bot, f_distance=300, kp=0.3)  # Reduced gain = smoother, less oscillation
         right_v = forward_velocity
         left_v = forward_velocity
-        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance=desired_side_distance, kp=0.08)  # Lower gain = gentler corrections
+        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance=desired_side_distance, kp=0.05)  # Reduced gain = gentler corrections
 
-        lim = max(abs(forward_velocity) * 0.8, 12)  # Ensure at least 12 RPM correction allowed
+        lim = max(abs(forward_velocity) * 0.6, 8)  # Reduced correction limit = less aggressive corrections
         if delta_velocity > lim: delta_velocity = lim
         if delta_velocity < -lim: delta_velocity = -lim
 
@@ -159,7 +159,7 @@ if __name__ == "__main__":
         Bot.set_right_motor_speed(right_v)
         Bot.set_left_motor_speed(left_v)
 
-        time.sleep(0.06)  # ~17 Hz - slower loop = more stable, less oscillation
+        time.sleep(0.08)  # ~12 Hz - slower loop = more stable, less oscillation
 
 
 
