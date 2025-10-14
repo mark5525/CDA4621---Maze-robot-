@@ -37,7 +37,7 @@ def side_PID(Bot, side_follow, side_distance = 300, kp = 0.10):
     return saturation(Bot, rpm_v)
 
 
-def rotation(Bot, angle, pivot_rpm = 12, timeout_s = 6.0, desired_front_distance = 300, extra_clear = 150, consecutive_clear = 2):
+def rotation(Bot, angle, pivot_rpm = 10, timeout_s = 6.0, desired_front_distance = 300, extra_clear = 150, consecutive_clear = 2):
     def _front_mm():
         scan = Bot.get_range_image()
         vals = [d for d in scan[175:191] if d and d > 0]
