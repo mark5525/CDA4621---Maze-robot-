@@ -90,7 +90,7 @@ if __name__ == "__main__":
         if not side_values:
             Bot.stop_motors()
             time.sleep(0.1)  # Brief pause
-            rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm = 12)  # Swapped directions
+            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)  # Swapped directions
             continue
 
         # Emergency turn if too close to front wall
