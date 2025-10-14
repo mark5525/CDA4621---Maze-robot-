@@ -67,6 +67,40 @@ def rotation(Bot, angle, pivot_rpm = 6, timeout_s = 4.0, desired_front_distance 
             return
         time.sleep(0.01)
 
+def search_for_wall(Bot, side_follow, search_angle=45, pivot_rpm=8, timeout_s=3.0):
+    """Search for wall by rotating gradually until wall is found"""
+    def _check_wall():
+        scan = Bot.get_range_image()
+        if side_follow == "left":
+            side_values = [d for d in scan[85:110] if d and d > 0]
+        else:
+            side_values = [d for d in scan[265:290] if d and d > 0]
+        return side_values and min(side_values) < 600  # Wall found if distance < 600mm
+    
+    rpm = saturation(Bot, abs(pivot_rpm))
+    t0 = time.monotonic()
+    
+    # Start with a small rotation to search for wall
+    while True:
+        if _check_wall():
+            Bot.stop_motors()
+            return True  # Wall found
+            
+        # Rotate in the direction that makes sense for wall following
+        if side_follow == "left":
+            # When following left wall and lose it, turn right to find it
+            Bot.set_left_motor_speed(+rpm)
+            Bot.set_right_motor_speed(-rpm)
+        else:
+            # When following right wall and lose it, turn left to find it
+            Bot.set_left_motor_speed(-rpm)
+            Bot.set_right_motor_speed(+rpm)
+            
+        if timeout_s and (time.monotonic() - t0) > timeout_s:
+            Bot.stop_motors()
+            return False  # Wall not found
+        time.sleep(0.01)
+
 
 
 if __name__ == "__main__":
@@ -82,20 +116,28 @@ if __name__ == "__main__":
 
         # Check if we can still see the side wall
         if side_follow == "left":
-            side_values = [d for d in scan[90:105] if d and d > 0]
+            side_values = [d for d in scan[85:110] if d and d > 0]  # Expanded range
         else:
-            side_values = [d for d in scan[270:285] if d and d > 0]
+            side_values = [d for d in scan[265:290] if d and d > 0]  # Expanded range
 
         # Turn when side wall disappears (reached corner)
-        if not side_values:
+        # Also check if wall is too far away (likely lost it)
+        wall_lost = not side_values or (side_values and min(side_values) > 600)  # Reduced threshold
+        if wall_lost:
             Bot.stop_motors()
             time.sleep(0.1)  # Brief pause
-            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)  # Swapped directions
+            # Search for wall instead of just turning 90 degrees
+            wall_found = search_for_wall(Bot, side_follow, pivot_rpm=10, timeout_s=2.0)
+            if not wall_found:
+                # If wall not found, do a larger turn to clear corner
+                rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm = 12)
             continue
 
         # Emergency turn if too close to front wall
         if forward_distance < desired_front_distance:
-            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)  # Swapped directions
+            # When following left wall and hit front wall, turn right (positive angle)
+            # When following right wall and hit front wall, turn left (negative angle)
+            rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm = 12)
             continue
 
         forward_velocity = forward_PID(Bot, f_distance=300, kp=0.4)  # Lower gain = smoother, less oscillation
