@@ -1,7 +1,7 @@
 import time
 
 from HamBot.src.robot_systems.robot import HamBot
-import statistics
+import math
 #
 
 def saturation(bot, rpm):
@@ -24,18 +24,16 @@ def forward_PID(Bot, f_distance = 300, kp = 0.2):
     forward_v = saturation(Bot, rpm_v)
     return forward_v
 
-def side_PID(Bot, side_follow, side_distance = 300, kp = 0.06):
+def side_PID(Bot, side_follow, side_distance = 300, kp = 0.10):
     if side_follow == "left":
         values = [d for d in Bot.get_range_image()[90:115] if d and d > 0]
     else:
         values = [d for d in Bot.get_range_image()[270:285] if d and d > 0]
     if not values:
         return 0.0
-    actual = statistics.median(values)
+    actual = min(values)
     e = actual - side_distance
-    if abs(e) < 15:
-        return 0.0
-    rpm_v = kp * abs(e)
+    rpm_v = kp * e
     return saturation(Bot, rpm_v)
 
 
