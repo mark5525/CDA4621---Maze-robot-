@@ -77,10 +77,27 @@ if __name__ == "__main__":
     desired_side_distance = 300
 
     while True:
-        forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
+        scan = Bot.get_range_image()
+        forward_distance = min([a for a in scan[175:180] if a > 0] or [float("inf")])
+        
+        # Check if we can still see the side wall
+        if side_follow == "left":
+            side_values = [d for d in scan[90:115] if d and d > 0]
+        else:
+            side_values = [d for d in scan[270:285] if d and d > 0]
+        
+        # Turn when side wall disappears (reached corner)
+        if not side_values:
+            Bot.stop_motors()
+            time.sleep(0.1)  # Brief pause
+            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
+            continue
+        
+        # Emergency turn if too close to front wall
         if forward_distance < desired_front_distance:
             rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
             continue
+        
         forward_velocity = forward_PID(Bot, f_distance=300, kp=0.8)
         right_v = forward_velocity
         left_v = forward_velocity
