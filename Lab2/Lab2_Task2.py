@@ -67,6 +67,59 @@ def rotation(Bot, angle, pivot_rpm = 6, timeout_s = 4.0, desired_front_distance 
             return
         time.sleep(0.01)
 
+def determine_wall_orientation(Bot, side_follow):
+    """Determine which direction the wall is relative to the robot"""
+    scan = Bot.get_range_image()
+    
+    # Check all four directions
+    north_values = [d for d in scan[0:15] + scan[345:360] if d and d > 0]  # 0-15° and 345-360°
+    south_values = [d for d in scan[165:195] if d and d > 0]  # 165-195°
+    east_values = [d for d in scan[75:105] if d and d > 0]   # 75-105°
+    west_values = [d for d in scan[255:285] if d and d > 0]  # 255-285°
+    
+    # Find the closest wall direction
+    distances = {}
+    if north_values: distances['north'] = min(north_values)
+    if south_values: distances['south'] = min(south_values)
+    if east_values: distances['east'] = min(east_values)
+    if west_values: distances['west'] = min(west_values)
+    
+    if not distances:
+        return None
+    
+    # Return the direction with the closest wall
+    return min(distances, key=distances.get)
+
+def get_correct_turn_direction(side_follow, wall_orientation):
+    """Determine correct turn direction based on wall orientation"""
+    if wall_orientation is None:
+        # Default behavior if we can't determine orientation
+        return 90 if side_follow == "left" else -90
+    
+    # When following left wall and hitting front wall
+    if side_follow == "left":
+        if wall_orientation == "north":  # Wall to north, turn right
+            return 90
+        elif wall_orientation == "south":  # Wall to south, turn left
+            return -90
+        elif wall_orientation == "east":  # Wall to east, turn right
+            return 90
+        elif wall_orientation == "west":  # Wall to west, turn left
+            return -90
+    
+    # When following right wall and hitting front wall
+    else:
+        if wall_orientation == "north":  # Wall to north, turn left
+            return -90
+        elif wall_orientation == "south":  # Wall to south, turn right
+            return 90
+        elif wall_orientation == "east":  # Wall to east, turn left
+            return -90
+        elif wall_orientation == "west":  # Wall to west, turn right
+            return 90
+    
+    return 90  # Default fallback
+
 def search_for_wall(Bot, side_follow, search_angle=45, pivot_rpm=8, timeout_s=3.0):
     """Search for wall by rotating gradually until wall is found"""
     def _check_wall():
@@ -135,9 +188,10 @@ if __name__ == "__main__":
 
         # Emergency turn if too close to front wall
         if forward_distance < desired_front_distance:
-            # When following left wall and hit front wall, turn right to continue following
-            # When following right wall and hit front wall, turn left to continue following
-            rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm = 10)
+            # Determine wall orientation and turn accordingly
+            wall_orientation = determine_wall_orientation(Bot, side_follow)
+            turn_angle = get_correct_turn_direction(side_follow, wall_orientation)
+            rotation(Bot, turn_angle, pivot_rpm = 10)
             continue
 
         forward_velocity = forward_PID(Bot, f_distance=300, kp=0.3)  # Reduced gain = smoother, less oscillation
