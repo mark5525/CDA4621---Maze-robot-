@@ -2,6 +2,7 @@ import time
 from HamBot.src.robot_systems.robot import HamBot
 import math
 
+
 def saturation(bot, rpm):
     max_rpm = getattr(bot, "max_motor_speed", 60)
     if rpm > max_rpm:
@@ -11,7 +12,7 @@ def saturation(bot, rpm):
     return rpm
 
 
-def forward_PID(Bot, f_distance = 300, kp = 0.8):
+def forward_PID(Bot, f_distance=300, kp=0.8):
     scan = Bot.get_range_image()
     d_range = [a for a in scan[175:180] if a > 0]
     if not d_range:
@@ -22,7 +23,8 @@ def forward_PID(Bot, f_distance = 300, kp = 0.8):
     forward_v = saturation(Bot, rpm_v)
     return forward_v
 
-def side_PID(Bot, side_follow, side_distance = 300, kp = 0.10):
+
+def side_PID(Bot, side_follow, side_distance=300, kp=0.10):
     if side_follow == "left":
         values = [d for d in Bot.get_range_image()[90:105] if d and d > 0]
     else:
@@ -35,7 +37,7 @@ def side_PID(Bot, side_follow, side_distance = 300, kp = 0.10):
     return saturation(Bot, rpm_v)
 
 
-def rotation(Bot, angle, pivot_rpm = 6, timeout_s = 4.0, desired_front_distance = 300, extra_clear = 40, consecutive_clear = 1):
+def rotation(Bot, angle, pivot_rpm=6, timeout_s=4.0, desired_front_distance=300, extra_clear=40, consecutive_clear=1):
     def _front_mm():
         scan = Bot.get_range_image()
         vals = [d for d in scan[178:183] if d and d > 0]
@@ -68,7 +70,6 @@ def rotation(Bot, angle, pivot_rpm = 6, timeout_s = 4.0, desired_front_distance 
         time.sleep(0.01)
 
 
-
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 40
@@ -79,30 +80,31 @@ if __name__ == "__main__":
     while True:
         scan = Bot.get_range_image()
         forward_distance = min([a for a in scan[175:180] if a > 0] or [float("inf")])
-        
+
         # Check if we can still see the side wall
         if side_follow == "left":
             side_values = [d for d in scan[90:105] if d and d > 0]
         else:
             side_values = [d for d in scan[270:285] if d and d > 0]
-        
+
         # Turn when side wall disappears (reached corner)
         if not side_values:
             Bot.stop_motors()
             time.sleep(0.1)  # Brief pause
-            rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm = 12)  # Swapped directions
+            rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm=12)  # Swapped directions
             continue
-        
+
         # Emergency turn if too close to front wall
         if forward_distance < desired_front_distance:
-            rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm = 12)  # Swapped directions
+            rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm=12)  # Swapped directions
             continue
-        
+
         forward_velocity = forward_PID(Bot, f_distance=300, kp=0.4)  # Lower gain = smoother, less oscillation
         right_v = forward_velocity
         left_v = forward_velocity
-        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance=desired_side_distance, kp=0.08)  # Lower gain = gentler corrections
-        
+        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance=desired_side_distance,
+                                  kp=0.08)  # Lower gain = gentler corrections
+
         lim = max(abs(forward_velocity) * 0.8, 12)  # Ensure at least 12 RPM correction allowed
         if delta_velocity > lim: delta_velocity = lim
         if delta_velocity < -lim: delta_velocity = -lim
