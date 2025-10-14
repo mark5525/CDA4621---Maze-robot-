@@ -37,10 +37,10 @@ def side_PID(Bot, side_follow, side_distance = 300, kp = 0.10):
     return saturation(Bot, rpm_v)
 
 
-def rotation(Bot, angle, pivot_rpm = 10, timeout_s = 6.0, desired_front_distance = 300, extra_clear = 150, consecutive_clear = 2):
+def rotation(Bot, angle, pivot_rpm = 8, timeout_s = 6.0, desired_front_distance = 300, extra_clear = 100, consecutive_clear = 1):
     def _front_mm():
         scan = Bot.get_range_image()
-        vals = [d for d in scan[175:191] if d and d > 0]
+        vals = [d for d in scan[178:183] if d and d > 0]
         return min(vals) if vals else float("inf")
 
     clear_thresh = desired_front_distance + extra_clear
@@ -67,7 +67,7 @@ def rotation(Bot, angle, pivot_rpm = 10, timeout_s = 6.0, desired_front_distance
         if timeout_s and (time.monotonic() - t0) > timeout_s:
             Bot.stop_motors()
             return
-        time.sleep(0.02)
+        time.sleep(0.01)
 
 
 
