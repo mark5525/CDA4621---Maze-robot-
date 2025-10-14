@@ -65,7 +65,7 @@ def side_PID(Bot, pid_controller, side_follow, side_distance=300):
     return saturation(Bot, rpm_v)
 
 
-def rotation(Bot, angle, pivot_rpm=6, timeout_s=4.0, desired_front_distance=300, extra_clear=40, consecutive_clear=1):
+def rotation(Bot, angle, pivot_rpm=15, timeout_s=3.0, desired_front_distance=300, extra_clear=50, consecutive_clear=3):
     def _front_mm():
         scan = Bot.get_range_image()
         vals = [d for d in scan[178:183] if d and d > 0]
@@ -83,6 +83,7 @@ def rotation(Bot, angle, pivot_rpm=6, timeout_s=4.0, desired_front_distance=300,
             clear_hits += 1
             if clear_hits >= consecutive_clear:
                 Bot.stop_motors()
+                time.sleep(0.1)  # Small pause to stabilize
                 return
         else:
             clear_hits = 0
@@ -94,6 +95,7 @@ def rotation(Bot, angle, pivot_rpm=6, timeout_s=4.0, desired_front_distance=300,
             Bot.set_right_motor_speed(+rpm)
         if timeout_s and (time.monotonic() - t0) > timeout_s:
             Bot.stop_motors()
+            time.sleep(0.1)  # Small pause to stabilize
             return
         time.sleep(0.01)
 
@@ -101,20 +103,21 @@ def rotation(Bot, angle, pivot_rpm=6, timeout_s=4.0, desired_front_distance=300,
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
-    Bot.max_motor_speed = 40
+    Bot.max_motor_speed = 50  # Increased for better speed
     side_follow = "right"
     desired_front_distance = 300
     desired_side_distance = 300
     
     # Create PID controllers with derivative terms to reduce oscillation
     # kp: proportional gain, kd: derivative gain (dampens oscillations)
-    forward_controller = PIDController(kp=0.3, kd=2.0)
-    side_controller = PIDController(kp=0.1, kd=1.0)
+    # Lower kd values for less damping, faster response
+    forward_controller = PIDController(kp=0.5, kd=0.3)
+    side_controller = PIDController(kp=0.15, kd=0.2)
 
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         if forward_distance < desired_front_distance:
-            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
+            rotation(Bot, -90 if side_follow == "left" else 90)
             # Reset controllers after rotation
             forward_controller.reset()
             side_controller.reset()
