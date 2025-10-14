@@ -98,12 +98,12 @@ if __name__ == "__main__":
             rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
             continue
         
-        forward_velocity = forward_PID(Bot, f_distance=300, kp=0.8)
+        forward_velocity = forward_PID(Bot, f_distance=300, kp=0.6)  # Reduce from 0.8
         right_v = forward_velocity
         left_v = forward_velocity
-        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance = desired_side_distance, kp = 0.1)
-
-        lim = abs(forward_velocity) * 0.8
+        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance=desired_side_distance, kp=0.15)
+        # Increase from 0.1 to 0.15 or even 0.2
+        lim = max(abs(forward_velocity) * 0.8, 15)  # Ensure at least 15 RPM correction allowed
         if delta_velocity > lim: delta_velocity = lim
         if delta_velocity < -lim: delta_velocity = -lim
 
