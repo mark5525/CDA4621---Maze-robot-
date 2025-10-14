@@ -82,7 +82,7 @@ def side_PID(Bot, pid_controller, side_follow, side_distance=300):
     return saturation(Bot, rpm_v)
 
 
-def rotation(Bot, angle, pivot_rpm=18, timeout_s=2.5, desired_front_distance=300, extra_clear=30, consecutive_clear=2):
+def rotation(Bot, angle, pivot_rpm=20, timeout_s=2.0, desired_front_distance=300, extra_clear=20, consecutive_clear=2):
     def _front_mm():
         scan = Bot.get_range_image()
         vals = [d for d in scan[178:183] if d and d > 0]
@@ -91,9 +91,8 @@ def rotation(Bot, angle, pivot_rpm=18, timeout_s=2.5, desired_front_distance=300
     clear_thresh = desired_front_distance + extra_clear
     clear_hits = 0
     
-    # Estimate time needed for the rotation
-    # Reduced time to turn tighter
-    min_rotation_time = abs(angle) / 90.0 * 0.65  # Reduced from 0.8 to turn less
+    # Much tighter turn - only turn about 60-70 degrees instead of full 90
+    min_rotation_time = abs(angle) / 90.0 * 0.5  # Reduced to 0.5 for minimal turn
 
     rpm = saturation(Bot, abs(pivot_rpm))
 
@@ -108,7 +107,7 @@ def rotation(Bot, angle, pivot_rpm=18, timeout_s=2.5, desired_front_distance=300
                 clear_hits += 1
                 if clear_hits >= consecutive_clear:
                     Bot.stop_motors()
-                    time.sleep(0.05)  # Shorter pause to resume quickly
+                    time.sleep(0.05)
                     return
             else:
                 clear_hits = 0
@@ -121,7 +120,7 @@ def rotation(Bot, angle, pivot_rpm=18, timeout_s=2.5, desired_front_distance=300
             Bot.set_right_motor_speed(+rpm)
         if timeout_s and elapsed > timeout_s:
             Bot.stop_motors()
-            time.sleep(0.05)  # Shorter pause to resume quickly
+            time.sleep(0.05)
             return
         time.sleep(0.01)
 
@@ -132,7 +131,7 @@ if __name__ == "__main__":
     Bot.max_motor_speed = 50  # Increased for better speed
     side_follow = "right"
     desired_front_distance = 300
-    desired_side_distance = 300
+    desired_side_distance = 350  # Increased to keep robot further from walls
     
     # Debug mode - set to True to see controller values
     DEBUG = True
@@ -144,13 +143,42 @@ if __name__ == "__main__":
     forward_controller = PIDController(kp=0.5, kd=0.3, filter_size=4, deadband=5)
     side_controller = PIDController(kp=0.18, kd=0.25, filter_size=4, deadband=5)
 
+    lost_wall_counter = 0
+    max_lost_wall_cycles = 10  # Allow some cycles before recovery
+    
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
+        
+        # Check if we can see the side wall
+        scan = Bot.get_range_image()
+        if side_follow == "left":
+            side_values = [d for d in scan[85:95] if d and d > 0]
+        else:
+            side_values = [d for d in scan[265:275] if d and d > 0]
+        
+        # Wall recovery: if we can't see the wall, turn back toward it
+        if not side_values:
+            lost_wall_counter += 1
+            if lost_wall_counter >= max_lost_wall_cycles:
+                if DEBUG:
+                    print("Wall lost! Turning back...")
+                # Turn back toward where wall should be
+                Bot.set_left_motor_speed(-10 if side_follow == "right" else 10)
+                Bot.set_right_motor_speed(10 if side_follow == "right" else -10)
+                time.sleep(0.3)  # Brief correction turn
+                lost_wall_counter = 0
+                forward_controller.reset()
+                side_controller.reset()
+                continue
+        else:
+            lost_wall_counter = 0  # Reset if we can see wall
+        
         if forward_distance < desired_front_distance:
             rotation(Bot, -90 if side_follow == "left" else 90)
             # Reset controllers after rotation
             forward_controller.reset()
             side_controller.reset()
+            lost_wall_counter = 0
             continue
         
         forward_velocity = forward_PID(Bot, forward_controller, f_distance=300)
@@ -171,7 +199,8 @@ if __name__ == "__main__":
             right_v = saturation(Bot, right_v - delta_velocity)
 
         if DEBUG:
-            print(f"Fwd:{forward_velocity:.1f} Delta:{delta_velocity:.1f} L:{left_v:.1f} R:{right_v:.1f}")
+            side_dist = min(side_values) if side_values else 9999
+            print(f"Fwd:{forward_velocity:.1f} SideDist:{side_dist:.0f} Delta:{delta_velocity:.1f} L:{left_v:.1f} R:{right_v:.1f}")
 
         Bot.set_right_motor_speed(right_v)
         Bot.set_left_motor_speed(left_v)
