@@ -81,7 +81,7 @@ if __name__ == "__main__":
         if forward_distance < desired_front_distance:
             rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
             continue
-        forward_velocity = forward_PID(Bot, f_distance=300, kp=3)
+        forward_velocity = forward_PID(Bot, f_distance=300, kp=0.3)
         right_v = forward_velocity
         left_v = forward_velocity
         delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance = desired_side_distance, kp = 0.06)
