@@ -37,7 +37,7 @@ def side_PID(Bot, side_follow, side_distance = 300, kp = 0.10):
     return saturation(Bot, rpm_v)
 
 
-def rotation(Bot, angle, pivot_rpm = 8, timeout_s = 6.0, desired_front_distance = 300, extra_clear = 100, consecutive_clear = 1):
+def rotation(Bot, angle, pivot_rpm = 6, timeout_s = 4.0, desired_front_distance = 300, extra_clear = 70, consecutive_clear = 1):
     def _front_mm():
         scan = Bot.get_range_image()
         vals = [d for d in scan[178:183] if d and d > 0]
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         if forward_distance < desired_front_distance:
-            rotation(Bot, -85 if side_follow == "left" else 85, pivot_rpm = 12)
+            rotation(Bot, -80 if side_follow == "left" else 80, pivot_rpm = 12)
             continue
         forward_velocity = forward_PID(Bot, f_distance=300, kp=3)
         right_v = forward_velocity
