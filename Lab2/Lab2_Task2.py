@@ -99,8 +99,8 @@ if __name__ == "__main__":
             left_v = saturation(Bot, left_v + delta_velocity)
             right_v = saturation(Bot, right_v - delta_velocity)
 
-        Bot.set_left_motor_speed(left_v)
         Bot.set_right_motor_speed(right_v)
+        Bot.set_left_motor_speed(left_v)
 
         time.sleep(0.05)  # ~20 Hz
 
