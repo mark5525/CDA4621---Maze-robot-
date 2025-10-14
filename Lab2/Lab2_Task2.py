@@ -11,7 +11,7 @@ def saturation(bot, rpm):
     return rpm
 
 
-def forward_PID(Bot, f_distance = 300, kp = 0.2):
+def forward_PID(Bot, f_distance = 300, kp = 0.3):
     scan = Bot.get_range_image()
     d_range = [a for a in scan[175:180] if a > 0]
     if not d_range:
@@ -84,7 +84,7 @@ if __name__ == "__main__":
         forward_velocity = forward_PID(Bot, f_distance=300, kp=0.3)
         right_v = forward_velocity
         left_v = forward_velocity
-        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance = desired_side_distance, kp = 0.06)
+        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance = desired_side_distance, kp = 0.1)
 
         lim = abs(forward_velocity) * 0.8
         if delta_velocity > lim: delta_velocity = lim
