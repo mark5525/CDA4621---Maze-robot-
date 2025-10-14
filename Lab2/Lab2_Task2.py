@@ -5,26 +5,39 @@ from collections import deque
 #
 class PIDController:
     """PID controller with sensor filtering to reduce oscillation"""
-    def __init__(self, kp, kd=0.0, filter_size=3):
+    def __init__(self, kp, kd=0.0, filter_size=5, deadband=0):
         self.kp = kp
         self.kd = kd
+        self.deadband = deadband  # Ignore small errors to prevent micro-corrections
         self.prev_error = 0.0
         self.filter = deque(maxlen=filter_size)
+        self.derivative_filter = deque(maxlen=3)  # Smooth derivative
     
     def compute(self, actual, target, dt=0.02):
         # Add to filter for smoothing
         self.filter.append(actual)
-        # Use median of recent readings to reject outliers
-        filtered_actual = sorted(self.filter)[len(self.filter)//2]
+        
+        # Use average for smoother response (less jittery than median)
+        filtered_actual = sum(self.filter) / len(self.filter)
+        
+        # Calculate error
+        error = filtered_actual - target
+        
+        # Apply deadband to prevent tiny oscillations
+        if abs(error) < self.deadband:
+            error = 0.0
         
         # Proportional term
-        error = filtered_actual - target
         p_term = self.kp * error
         
         # Derivative term (dampens oscillations)
         d_term = 0.0
-        if dt > 0:
-            d_term = self.kd * (error - self.prev_error) / dt
+        if dt > 0 and len(self.filter) >= self.filter.maxlen:
+            raw_derivative = (error - self.prev_error) / dt
+            # Smooth the derivative to prevent spikes
+            self.derivative_filter.append(raw_derivative)
+            smoothed_derivative = sum(self.derivative_filter) / len(self.derivative_filter)
+            d_term = self.kd * smoothed_derivative
         
         self.prev_error = error
         
@@ -33,6 +46,7 @@ class PIDController:
     def reset(self):
         self.prev_error = 0.0
         self.filter.clear()
+        self.derivative_filter.clear()
 
 def saturation(bot, rpm):
     max_rpm = getattr(bot, "max_motor_speed", 60)
@@ -55,11 +69,14 @@ def forward_PID(Bot, pid_controller, f_distance=300):
 
 def side_PID(Bot, pid_controller, side_follow, side_distance=300):
     if side_follow == "left":
-        values = [d for d in Bot.get_range_image()[90:115] if d and d > 0]
+        # Left side: 90 degrees (perpendicular)
+        values = [d for d in Bot.get_range_image()[85:95] if d and d > 0]
     else:
-        values = [d for d in Bot.get_range_image()[270:285] if d and d > 0]
+        # Right side: 270 degrees (perpendicular)
+        values = [d for d in Bot.get_range_image()[265:275] if d and d > 0]
     if not values:
         return 0.0
+    # Use minimum distance to wall
     actual = min(values)
     rpm_v = pid_controller.compute(actual, side_distance)
     return saturation(Bot, rpm_v)
@@ -118,11 +135,15 @@ if __name__ == "__main__":
     desired_front_distance = 300
     desired_side_distance = 300
     
+    # Debug mode - set to True to see controller values
+    DEBUG = True
+    
     # Create PID controllers with derivative terms to reduce oscillation
     # kp: proportional gain, kd: derivative gain (dampens oscillations)
-    # Lower kd values for less damping, faster response
-    forward_controller = PIDController(kp=0.5, kd=0.3)
-    side_controller = PIDController(kp=0.15, kd=0.2)
+    # filter_size: larger = smoother but slower response
+    # deadband: ignores small errors to prevent micro-oscillations
+    forward_controller = PIDController(kp=0.5, kd=0.3, filter_size=4, deadband=5)
+    side_controller = PIDController(kp=0.18, kd=0.25, filter_size=4, deadband=5)
 
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
@@ -138,7 +159,8 @@ if __name__ == "__main__":
         left_v = forward_velocity
         delta_velocity = side_PID(Bot, side_controller, side_follow=side_follow, side_distance=desired_side_distance)
 
-        lim = abs(forward_velocity) * 0.8
+        # Limit correction but ensure minimum correction capability
+        lim = max(abs(forward_velocity) * 0.9, 10)  # At least 10 RPM correction allowed
         if delta_velocity > lim: delta_velocity = lim
         if delta_velocity < -lim: delta_velocity = -lim
 
@@ -149,10 +171,13 @@ if __name__ == "__main__":
             left_v = saturation(Bot, left_v + delta_velocity)
             right_v = saturation(Bot, right_v - delta_velocity)
 
+        if DEBUG:
+            print(f"Fwd:{forward_velocity:.1f} Delta:{delta_velocity:.1f} L:{left_v:.1f} R:{right_v:.1f}")
+
         Bot.set_right_motor_speed(right_v)
         Bot.set_left_motor_speed(left_v)
 
-        time.sleep(0.02)  # ~50 Hz
+        time.sleep(0.025)  # ~40 Hz - balance between responsiveness and stability
 
 
 
