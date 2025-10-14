@@ -1,6 +1,38 @@
 import time
 from HamBot.src.robot_systems.robot import HamBot
 import math
+from collections import deque
+
+class PIDController:
+    """PID controller with sensor filtering to reduce oscillation"""
+    def __init__(self, kp, kd=0.0, filter_size=3):
+        self.kp = kp
+        self.kd = kd
+        self.prev_error = 0.0
+        self.filter = deque(maxlen=filter_size)
+    
+    def compute(self, actual, target, dt=0.02):
+        # Add to filter for smoothing
+        self.filter.append(actual)
+        # Use median of recent readings to reject outliers
+        filtered_actual = sorted(self.filter)[len(self.filter)//2]
+        
+        # Proportional term
+        error = filtered_actual - target
+        p_term = self.kp * error
+        
+        # Derivative term (dampens oscillations)
+        d_term = 0.0
+        if dt > 0:
+            d_term = self.kd * (error - self.prev_error) / dt
+        
+        self.prev_error = error
+        
+        return p_term + d_term
+    
+    def reset(self):
+        self.prev_error = 0.0
+        self.filter.clear()
 
 def saturation(bot, rpm):
     max_rpm = getattr(bot, "max_motor_speed", 60)
@@ -11,18 +43,17 @@ def saturation(bot, rpm):
     return rpm
 
 
-def forward_PID(Bot, f_distance = 300, kp = 0.2):
+def forward_PID(Bot, pid_controller, f_distance=300):
     scan = Bot.get_range_image()
     d_range = [a for a in scan[175:180] if a > 0]
     if not d_range:
         return 0.0
     actual = min(d_range)
-    e = actual - f_distance
-    rpm_v = kp * e
+    rpm_v = pid_controller.compute(actual, f_distance)
     forward_v = saturation(Bot, rpm_v)
     return forward_v
 
-def side_PID(Bot, side_follow, side_distance=300, kp=0.10):
+def side_PID(Bot, pid_controller, side_follow, side_distance=300):
     if side_follow == "left":
         values = [d for d in Bot.get_range_image()[90:115] if d and d > 0]
     else:
@@ -30,8 +61,7 @@ def side_PID(Bot, side_follow, side_distance=300, kp=0.10):
     if not values:
         return 0.0
     actual = min(values)
-    e = actual - side_distance
-    rpm_v = kp * e
+    rpm_v = pid_controller.compute(actual, side_distance)
     return saturation(Bot, rpm_v)
 
 
@@ -75,16 +105,25 @@ if __name__ == "__main__":
     side_follow = "right"
     desired_front_distance = 300
     desired_side_distance = 300
+    
+    # Create PID controllers with derivative terms to reduce oscillation
+    # kp: proportional gain, kd: derivative gain (dampens oscillations)
+    forward_controller = PIDController(kp=0.3, kd=2.0)
+    side_controller = PIDController(kp=0.1, kd=1.0)
 
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         if forward_distance < desired_front_distance:
             rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
+            # Reset controllers after rotation
+            forward_controller.reset()
+            side_controller.reset()
             continue
-        forward_velocity = forward_PID(Bot, f_distance=300, kp=0.3)
+        
+        forward_velocity = forward_PID(Bot, forward_controller, f_distance=300)
         right_v = forward_velocity
         left_v = forward_velocity
-        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance=desired_side_distance, kp=0.1)
+        delta_velocity = side_PID(Bot, side_controller, side_follow=side_follow, side_distance=desired_side_distance)
 
         lim = abs(forward_velocity) * 0.8
         if delta_velocity > lim: delta_velocity = lim
@@ -100,7 +139,7 @@ if __name__ == "__main__":
         Bot.set_right_motor_speed(right_v)
         Bot.set_left_motor_speed(left_v)
 
-        time.sleep(0.05)  # ~20 Hz
+        time.sleep(0.02)  # ~50 Hz
 
 
 
