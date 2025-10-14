@@ -82,7 +82,7 @@ def side_PID(Bot, pid_controller, side_follow, side_distance=300):
     return saturation(Bot, rpm_v)
 
 
-def rotation(Bot, angle, pivot_rpm=15, timeout_s=3.0, desired_front_distance=300, extra_clear=50, consecutive_clear=3):
+def rotation(Bot, angle, pivot_rpm=18, timeout_s=2.5, desired_front_distance=300, extra_clear=30, consecutive_clear=2):
     def _front_mm():
         scan = Bot.get_range_image()
         vals = [d for d in scan[178:183] if d and d > 0]
@@ -92,9 +92,8 @@ def rotation(Bot, angle, pivot_rpm=15, timeout_s=3.0, desired_front_distance=300
     clear_hits = 0
     
     # Estimate time needed for the rotation
-    # Approximate: 90 degrees at 15 RPM takes about 0.8-1.2 seconds
-    # This ensures minimum rotation time before checking clearance
-    min_rotation_time = abs(angle) / 90.0 * 0.8  # Scale by angle
+    # Reduced time to turn tighter
+    min_rotation_time = abs(angle) / 90.0 * 0.65  # Reduced from 0.8 to turn less
 
     rpm = saturation(Bot, abs(pivot_rpm))
 
@@ -109,7 +108,7 @@ def rotation(Bot, angle, pivot_rpm=15, timeout_s=3.0, desired_front_distance=300
                 clear_hits += 1
                 if clear_hits >= consecutive_clear:
                     Bot.stop_motors()
-                    time.sleep(0.1)  # Small pause to stabilize
+                    time.sleep(0.05)  # Shorter pause to resume quickly
                     return
             else:
                 clear_hits = 0
@@ -122,7 +121,7 @@ def rotation(Bot, angle, pivot_rpm=15, timeout_s=3.0, desired_front_distance=300
             Bot.set_right_motor_speed(+rpm)
         if timeout_s and elapsed > timeout_s:
             Bot.stop_motors()
-            time.sleep(0.1)  # Small pause to stabilize
+            time.sleep(0.05)  # Shorter pause to resume quickly
             return
         time.sleep(0.01)
 
