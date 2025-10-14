@@ -98,12 +98,12 @@ if __name__ == "__main__":
             rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
             continue
         
-        forward_velocity = forward_PID(Bot, f_distance=300, kp=0.6)  # Reduce from 0.8
+        forward_velocity = forward_PID(Bot, f_distance=300, kp=0.4)  # Lower gain = smoother, less oscillation
         right_v = forward_velocity
         left_v = forward_velocity
-        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance=desired_side_distance, kp=0.15)
-        # Increase from 0.1 to 0.15 or even 0.2
-        lim = max(abs(forward_velocity) * 0.8, 15)  # Ensure at least 15 RPM correction allowed
+        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance=desired_side_distance, kp=0.08)  # Lower gain = gentler corrections
+        
+        lim = max(abs(forward_velocity) * 0.8, 12)  # Ensure at least 12 RPM correction allowed
         if delta_velocity > lim: delta_velocity = lim
         if delta_velocity < -lim: delta_velocity = -lim
 
@@ -117,7 +117,7 @@ if __name__ == "__main__":
         Bot.set_right_motor_speed(right_v)
         Bot.set_left_motor_speed(left_v)
 
-        time.sleep(0.01)  # ~20 Hz
+        time.sleep(0.06)  # ~17 Hz - slower loop = more stable, less oscillation
 
 
 
