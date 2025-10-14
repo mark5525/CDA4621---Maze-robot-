@@ -4,6 +4,7 @@ from HamBot.src.robot_systems.robot import HamBot
 import math
 #
 
+
 def saturation(bot, rpm):
     max_rpm = getattr(bot, "max_motor_speed", 60)
     if rpm > max_rpm:
@@ -27,11 +28,13 @@ def forward_PID(Bot, f_distance = 300, kp = 0.2):
 def side_PID(Bot, side_follow, side_distance = 300, kp = 3):
     if side_follow == "left":
         values = [d for d in Bot.get_range_image()[90:115] if d and d > 0]
-        if not values: return 0.0
+        if not values:
+            return 0.0
         actual = min(values)
     elif side_follow == "right":
         values = [d for d in Bot.get_range_image()[270:285] if d and d > 0]
-        if not values: return 0.0
+        if not values:
+            return 0.0
         actual = min(values)
     else:
         return 0.0
@@ -39,12 +42,11 @@ def side_PID(Bot, side_follow, side_distance = 300, kp = 3):
     rpm_v = kp * e
     return saturation(Bot, rpm_v)
 
-def rotation(Bot, angle, pivot_rpm = 12, timeout_s = 6.0, desired_front_distance = 300, extra_clear = 150, consecutive_clear = 2):
-    def _front_mm():
-        scan = Bot.get_range_image()
-        vals = [d for d in scan[175:191] if d and d > 0]
-        return min(vals) if vals else float("inf")
-
+def _front_mm():
+    scan = Bot.get_range_image()
+    vals = [d for d in scan[175:191] if d and d > 0]
+    return min(vals) if vals else float("inf")
+def rotation(Bot, angle, pivot_rpm=12, timeout_s=6.0, desired_front_distance=300, extra_clear=150, consecutive_clear=2):
     clear_thresh = desired_front_distance + extra_clear
     clear_hits = 0
 
@@ -72,7 +74,6 @@ def rotation(Bot, angle, pivot_rpm = 12, timeout_s = 6.0, desired_front_distance
         time.sleep(0.02)
 
 
-
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 50
@@ -85,6 +86,7 @@ if __name__ == "__main__":
         if forward_distance < desired_front_distance:
             rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)
             continue
+
         forward_velocity = forward_PID(Bot, f_distance=300, kp=3)
         right_v = forward_velocity
         left_v = forward_velocity
