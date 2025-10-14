@@ -73,27 +73,37 @@ def rotation(Bot, angle, pivot_rpm=15, timeout_s=3.0, desired_front_distance=300
 
     clear_thresh = desired_front_distance + extra_clear
     clear_hits = 0
+    
+    # Estimate time needed for the rotation
+    # Approximate: 90 degrees at 15 RPM takes about 0.8-1.2 seconds
+    # This ensures minimum rotation time before checking clearance
+    min_rotation_time = abs(angle) / 90.0 * 0.8  # Scale by angle
 
     rpm = saturation(Bot, abs(pivot_rpm))
 
     t0 = time.monotonic()
     while True:
+        elapsed = time.monotonic() - t0
         fwd = _front_mm()
-        if fwd >= clear_thresh:
-            clear_hits += 1
-            if clear_hits >= consecutive_clear:
-                Bot.stop_motors()
-                time.sleep(0.1)  # Small pause to stabilize
-                return
-        else:
-            clear_hits = 0
+        
+        # Only check for clearance AFTER minimum rotation time
+        if elapsed >= min_rotation_time:
+            if fwd >= clear_thresh:
+                clear_hits += 1
+                if clear_hits >= consecutive_clear:
+                    Bot.stop_motors()
+                    time.sleep(0.1)  # Small pause to stabilize
+                    return
+            else:
+                clear_hits = 0
+        
         if angle < 0:
             Bot.set_left_motor_speed(+rpm)
             Bot.set_right_motor_speed(-rpm)
         else:
             Bot.set_left_motor_speed(-rpm)
             Bot.set_right_motor_speed(+rpm)
-        if timeout_s and (time.monotonic() - t0) > timeout_s:
+        if timeout_s and elapsed > timeout_s:
             Bot.stop_motors()
             time.sleep(0.1)  # Small pause to stabilize
             return
