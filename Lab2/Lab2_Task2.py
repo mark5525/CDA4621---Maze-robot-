@@ -58,7 +58,7 @@ def creep_forward(Bot, rpm=10, duration=0.20):
 
 # --- controllers -----------------------------------------------------------
 
-def forward_PID(Bot, f_distance=300, kp=0.4):
+def forward_PID(Bot, f_distance=150, kp=0.4):
     scan = Bot.get_range_image()
     d_range = [a for a in scan[172:188] if a > 0]
     if not d_range:
@@ -68,7 +68,7 @@ def forward_PID(Bot, f_distance=300, kp=0.4):
     rpm_v = kp * e
     return saturation(Bot, rpm_v)
 
-def side_PID(Bot, side_follow, side_distance=300, kp=0.08):
+def side_PID(Bot, side_follow, side_distance=150, kp=0.08):
     vals = _side_vals(Bot, side_follow)
     if not vals:
         return 0.0
@@ -89,8 +89,8 @@ if __name__ == "__main__":
     side_follow = sys.argv[1].lower() if len(sys.argv) > 1 else "left"
     assert side_follow in ("left", "right")
 
-    desired_front_distance = 300   # mm
-    desired_side_distance  = 300   # mm
+    desired_front_distance = 150   # mm
+    desired_side_distance  = 150   # mm
 
     # debouncing for "side lost"
     side_lost_count = 0
