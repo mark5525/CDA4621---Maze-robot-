@@ -90,12 +90,12 @@ if __name__ == "__main__":
         if not side_values:
             Bot.stop_motors()
             time.sleep(0.1)  # Brief pause
-            rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm = 12)  # Swapped directions
+            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)  # Correct directions
             continue
         
         # Emergency turn if too close to front wall
         if forward_distance < desired_front_distance:
-            rotation(Bot, 90 if side_follow == "left" else -90, pivot_rpm = 12)  # Swapped directions
+            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)  # Correct directions
             continue
         
         forward_velocity = forward_PID(Bot, f_distance=300, kp=0.4)  # Lower gain = smoother, less oscillation
