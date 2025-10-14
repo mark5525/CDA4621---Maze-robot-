@@ -24,7 +24,7 @@ def forward_PID(Bot, f_distance = 300, kp = 0.2):
     forward_v = saturation(Bot, rpm_v)
     return forward_v
 
-def side_PID(Bot, side_follow, side_distance = 300, kp = 0.05):
+def side_PID(Bot, side_follow, side_distance = 300, kp = 0.30):
     if side_follow == "left":
         values = [d for d in Bot.get_range_image()[90:115] if d and d > 0]
     else:
