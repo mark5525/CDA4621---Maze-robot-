@@ -65,7 +65,6 @@ if __name__ == "__main__":
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         forward_velocity = pp.forward_PID(Bot, d_distance)
         print("v=", forward_velocity, "dist=", forward_distance)
-        time.sleep(pp.Timestep)
         # stop when inside the band
         if forward_distance != float("inf") and abs(forward_distance - d_distance) <= pp.StopBand:
             Bot.stop_motors()
