@@ -1,7 +1,7 @@
 from HamBot.src.robot_systems.robot import HamBot
 import math
 
-def saturation(bot, rpm):
+def saturation(Bot, rpm):
     max_rpm = getattr(Bot, "max_motor_speed", 60)
     if rpm > max_rpm:
         return max_rpm
@@ -17,7 +17,7 @@ class Defintions():
         self.Error_Previous = 0
         self.K_p = 0.2
         self.K_i = 0.6
-        self.K_d = 0
+        self.K_d = 0.5
         self.Time = 0
         self.Integral = 0.0
         self.Timestep = 0.032
@@ -36,8 +36,14 @@ class Defintions():
         Forward_PID_Values.MeasuredDistance = min(window)
         Forward_PID_Values.DesiredDistance = desired_distance
         Prev_error = Forward_PID_Values.Error
+        Forward_PID_Values.Proportional = Forward_PID_Values.K_p * Forward_PID_Values.Error
+        Forward_PID_Values.Integral += Forward_PID_Values.Error *self.Timestep
+        Forward_PID_Values.Derivative = (Forward_PID_Values.Error - Forward_PID_Values.Error_Previous) / Forward_PID_Values.Timestep
+        Forward_PID_Values.Control = (Forward_PID_Values.Proportional * Forward_PID_Values.Error) + (Forward_PID_Values.K_i *self.Integral) + (Forward_PID_Values.K_d * self.Derivative)
         Sat_control = Forward_PID_Values.Saturated_Control
         Forward_PID_Values.Error_Previous = Prev_error
+        brake_start = 200
+        scale = min(1,abs(Forward_PID_Values.Error)/brake_start)
 
         return Sat_control
 
@@ -47,19 +53,11 @@ if __name__ == "__main__":
     d_distance = 600
     pp = Defintions()
     while True:
+        if (forward_velocity == 0):
+            break
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         forward_velocity = pp.forward_PID( Bot, d_distance)
-        print(forward_velocity)
-        if forward_distance > 610:
-            Bot.set_left_motor_speed(forward_velocity)
-            Bot.set_right_motor_speed(forward_velocity)
-            print(forward_distance)
-        elif forward_distance < 590:
-            Bot.set_left_motor_speed(forward_velocity)
-            Bot.set_right_motor_speed(forward_velocity)
-            print(forward_distance)
-        else:
-            Bot.stop_motors()
-            break
-
+        print("forward velocity", forward_velocity)
+        Bot.set_left_motor_speed(forward_velocity)
+        Bot.set_right_motor_speed(forward_velocity)
 
