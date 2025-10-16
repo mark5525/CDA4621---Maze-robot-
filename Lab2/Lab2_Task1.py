@@ -2,7 +2,7 @@ from HamBot.src.robot_systems.robot import HamBot
 import time
 
 def saturation(bot, rpm):
-    max_rpm = getattr(bot, "max_motor_speed", 40)
+    max_rpm = getattr(bot, "max_motor_speed", 50)
     if rpm > max_rpm:
         return max_rpm
     if rpm < -max_rpm:
@@ -41,7 +41,7 @@ class Defintions():
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
-    Bot.max_motor_speed = 40
+    Bot.max_motor_speed = 50
     d_distance = 600
     tolerance = 12
     pp = Defintions()
