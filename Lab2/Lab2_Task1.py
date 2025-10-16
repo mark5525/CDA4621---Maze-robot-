@@ -53,10 +53,10 @@ if __name__ == "__main__":
     d_distance = 600
     pp = Defintions()
     while True:
-        if (forward_velocity == 0):
-            break
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         forward_velocity = pp.forward_PID( Bot, d_distance)
+        if forward_velocity == 0:
+            break
         print("forward velocity", forward_velocity)
         Bot.set_left_motor_speed(forward_velocity)
         Bot.set_right_motor_speed(forward_velocity)
