@@ -40,6 +40,7 @@ class Defintions():
 
         # prepare for next tick
         self.Error_Previous = self.Error
+
         return out
 
 if __name__ == "__main__":
@@ -64,4 +65,4 @@ if __name__ == "__main__":
             Bot.stop_motors()
             break
 
-
+        time.sleep(pp.Timestep)
