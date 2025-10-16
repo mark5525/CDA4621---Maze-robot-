@@ -11,10 +11,10 @@ def saturation(bot, rpm):
 
 class Defintions():
     def __init__(self):
-        self.K_p = 0.2
-        self.K_i = 0.6
-        self.K_d = 0.8
-        self.Timestep = 0.032
+        self.K_p = 0.12
+        self.K_i = 0.10
+        self.K_d = 1.2
+        self.Timestep = 0.05
         self.Integral = 0
         self.PrevError = 0
 
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
     d_distance = 600
-    tolerance = 8
+    tolerance = 12
     pp = Defintions()
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
