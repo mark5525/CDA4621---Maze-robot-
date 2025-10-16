@@ -19,7 +19,7 @@ class Defintions():
         self.PrevError = 0
 
 
-    def forward_PID(self, Bot, desired_distance):
+    def forward_PID(self, bot, desired_distance):
         scan = Bot.get_range_image()
         window = [a for a in scan[175:180] if a and a > 0]
         if not window:
@@ -32,10 +32,9 @@ class Defintions():
         integral = self.Integral * self.K_i
         derive = (error - self.PrevError) / self.Timestep
         derivative = derive * self.K_d
-        self.PrevError = error
-
         control = proportional + integral + derivative
-        return saturation(Bot, control)
+        self.PrevError = error
+        return saturation(bot, control)
 
 
 
