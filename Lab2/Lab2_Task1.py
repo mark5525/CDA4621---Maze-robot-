@@ -21,29 +21,26 @@ class Defintions():
         self.Time = 0
         self.Integral = 0.0
         self.Timestep = 0.032
-        self.Proportional = self.K_p * self.Error
-        self.Integral +=  self.Error * self.Timestep
-        self.Derivative = (self.Error - self.Error_Previous) / self.Timestep
-        self.Control = (self.Proportional * self.Error) + (self.K_i *self.Integral) + (self.K_d * self.Derivative)
-        self.Saturated_Control = saturation(Bot, self.Control)
 
     def forward_PID(self, Bot, desired_distance):
-        Forward_PID_Values = Defintions()
         scan = Bot.get_range_image()
         window = [a for a in scan[175:180] if a > 0]
         if not window:
             return 0.0
-        Forward_PID_Values.MeasuredDistance = min(window)
-        Forward_PID_Values.DesiredDistance = desired_distance
-        Prev_error = Forward_PID_Values.Error
-        Forward_PID_Values.Proportional = Forward_PID_Values.K_p * Forward_PID_Values.Error
-        Forward_PID_Values.Integral += Forward_PID_Values.Error *self.Timestep
-        Forward_PID_Values.Derivative = (Forward_PID_Values.Error - Forward_PID_Values.Error_Previous) / Forward_PID_Values.Timestep
-        Forward_PID_Values.Control = (Forward_PID_Values.Proportional * Forward_PID_Values.Error) + (Forward_PID_Values.K_i *self.Integral) + (Forward_PID_Values.K_d * self.Derivative)
-        Sat_control = Forward_PID_Values.Saturated_Control
-        Forward_PID_Values.Error_Previous = Prev_error
 
-        return Sat_control
+        # Update measurements & error
+        self.MeasuredDistance = min(window)
+        self.DesiredDistance = desired_distance
+        self.Error = self.DesiredDistance - self.MeasuredDistance
+
+        # PID terms
+        self.Integral += self.Error * self.Timestep  # accumulate
+        derivative = (self.Error - self.Error_Previous) / self.Timestep
+
+        u = (self.K_p * self.Error) + (self.K_i * self.Integral) + (self.K_d * derivative)
+
+        self.Error_Previous = self.Error
+        return saturation(Bot, u)
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
@@ -52,7 +49,7 @@ if __name__ == "__main__":
     pp = Defintions()
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
-        forward_velocity = pp.forward_PID( Bot, d_distance)
+        forward_velocity = pp.forward_PID(Bot, d_distance)
         print("forward velocity", forward_velocity)
         Bot.set_left_motor_speed(forward_velocity)
         Bot.set_right_motor_speed(forward_velocity)
