@@ -31,7 +31,7 @@ class Defintions():
         # Update measurements & error
         self.MeasuredDistance = min(window)
         self.DesiredDistance = desired_distance
-        self.Error = self.DesiredDistance - self.MeasuredDistance
+        self.Error = self.MeasuredDistance -self.DesiredDistance
 
         # PID terms
         self.Integral += self.Error * self.Timestep  # accumulate
