@@ -21,10 +21,10 @@ class Defintions():
         self.Time = 0
         self.Integral = 0.0
         self.Timestep = 0.032
-        self.Proportional = self.K_p * self.Error
-        self.Integral +=  self.Error * self.Timestep
-        self.Derivative = (self.Error - self.Error_Previous) / self.Timestep
-        self.Control = (self.Proportional * self.Error) + (self.K_i *self.Integral) + (self.K_d * self.Derivative)
+        self.Proportional = 0
+        self.Integral +=  0
+        self.Derivative = 0
+        self.Control = 0
         self.Saturated_Control = saturation(Bot, self.Control)
 
     def forward_PID(self, Bot, desired_distance):
