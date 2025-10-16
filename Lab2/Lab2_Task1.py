@@ -1,6 +1,6 @@
 from HamBot.src.robot_systems.robot import HamBot
 import math
-
+import time
 def saturation(bot, rpm):
     max_rpm = getattr(Bot, "max_motor_speed", 60)
     if rpm > max_rpm:
@@ -51,6 +51,7 @@ if __name__ == "__main__":
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         forward_velocity = pp.forward_PID( Bot, d_distance)
         print(forward_velocity)
+        time.sleep(0.1)
         if forward_distance > 620:
             Bot.set_left_motor_speed(forward_velocity)
             Bot.set_right_motor_speed(forward_velocity)
