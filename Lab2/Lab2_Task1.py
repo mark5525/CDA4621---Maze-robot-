@@ -2,7 +2,7 @@ from HamBot.src.robot_systems.robot import HamBot
 import math
 
 def saturation(bot, rpm):
-    max_rpm = getattr(Bot, "max_motor_speed", 60)
+    max_rpm = getattr(bot, "max_motor_speed", 60)
     if rpm > max_rpm:
         return max_rpm
     if rpm < -max_rpm:
@@ -11,21 +11,13 @@ def saturation(bot, rpm):
 
 class Defintions():
     def __init__(self):
-        self.DesiredDistance = 0
-        self.MeasuredDistance = 0
-        self.Error = self.DesiredDistance - self.MeasuredDistance
-        self.Error_Previous = 0
         self.K_p = 0.2
         self.K_i = 0.6
-        self.K_d = 0
-        self.Time = 0
-        self.Integral = 0.0
+        self.K_d = 0.8
         self.Timestep = 0.032
-        self.Proportional = self.K_p * self.Error
-        self.Integral +=  self.Error * self.Timestep
-        self.Derivative = (self.Error - self.Error_Previous) / self.Timestep
-        self.Control = (self.Proportional * self.Error) + (self.K_i *self.Integral) + (self.K_d * self.Derivative)
-        self.Saturated_Control = saturation(Bot, self.Control)
+        self.Integral = 0
+        self.PrevError = 0
+
 
     def forward_PID(self, Bot, desired_distance):
         scan = Bot.get_range_image()
@@ -33,44 +25,37 @@ class Defintions():
         if not window:
             return 0.0
 
-        # measurements
-        self.MeasuredDistance = min(window)
-        self.DesiredDistance  = desired_distance
+        measured_distance = min(window)
+        error = measured_distance - desired_distance
+        proportional = self.K_p * error
+        self.Integral += error * self.Timestep
+        integral = self.Integral * self.K_i
+        derive = (error - self.PrevError) / self.Timestep
+        derivative = derive * self.K_d
+        self.PrevError = error
 
-        # PID terms
-        self.Error = self.MeasuredDistance - self.DesiredDistance
-        derr = (self.Error - self.Error_Previous) / self.Timestep
-        self.Integral += self.Error * self.Timestep
-        self.Proportional = self.K_p * self.Error
-        self.Derivative  = self.K_d * derr
+        control = proportional + integral + derivative
+        return saturation(Bot, control)
 
-        # control (note: NOT P*Error)
-        self.Control = self.Proportional + self.K_i*self.Integral + self.Derivative
-        out = saturation(Bot, self.Control)
 
-        # prepare for next tick
-        self.Error_Previous = self.Error
-        return out
+
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
     d_distance = 600
+    tolerance = 8
     pp = Defintions()
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
         forward_velocity = pp.forward_PID( Bot, d_distance)
         print(forward_velocity)
-        if forward_distance > 610:
-            Bot.set_left_motor_speed(forward_velocity)
-            Bot.set_right_motor_speed(forward_velocity)
-            print(forward_distance)
-        elif forward_distance < 590:
-            Bot.set_left_motor_speed(forward_velocity)
-            Bot.set_right_motor_speed(forward_velocity)
-            print(forward_distance)
-        else:
+        if forward_distance != float("inf") and abs(forward_distance - d_distance) <= tolerance:
             Bot.stop_motors()
             break
+        Bot.set_left_motor_speed(forward_velocity)
+        Bot.set_right_motor_speed(forward_velocity)
+        print(forward_distance)
+
 
 
