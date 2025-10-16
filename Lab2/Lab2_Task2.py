@@ -86,11 +86,33 @@ if __name__ == "__main__":
         else:
             side_values = [d for d in scan[270:285] if d and d > 0]
         
-        # Turn when side wall disappears (reached corner)
+        # Enhanced wall loss detection
+        wall_lost = False
         if not side_values:
+            wall_lost = True
+        elif side_values and min(side_values) > 800:  # Wall too far away
+            wall_lost = True
+        
+        # Turn when side wall disappears (reached corner) or is lost
+        if wall_lost:
             Bot.stop_motors()
             time.sleep(0.1)  # Brief pause
-            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm = 12)  # Correct directions
+            
+            # First try a small turn to see if we can find the wall again
+            small_turn_angle = -30 if side_follow == "left" else 30
+            rotation(Bot, small_turn_angle, pivot_rpm = 8, timeout_s = 1.0)
+            
+            # Check if wall is found after small turn
+            scan_after = Bot.get_range_image()
+            if side_follow == "left":
+                side_values_after = [d for d in scan_after[90:105] if d and d > 0]
+            else:
+                side_values_after = [d for d in scan_after[270:285] if d and d > 0]
+            
+            if not side_values_after or (side_values_after and min(side_values_after) > 600):
+                # Wall still not found, do a full corner turn
+                full_turn_angle = -90 if side_follow == "left" else 90
+                rotation(Bot, full_turn_angle, pivot_rpm = 12)
             continue
         
         # Emergency turn if too close to front wall
