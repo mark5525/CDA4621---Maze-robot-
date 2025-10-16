@@ -19,6 +19,7 @@ class Defintions():
         self.K_i = 0.6
         self.K_d = 0
         self.Time = 0
+        self.Integral = 0.0
         self.Timestep = 0.032
         self.Proportional = self.K_p * self.Error
         self.Integral +=  self.Error * self.Timestep
