@@ -11,9 +11,9 @@ def saturation(bot, rpm):
 
 class Defintions():
     def __init__(self):
-        self.K_p = 0.12
-        self.K_i = 0.10
-        self.K_d = 1.2
+        self.K_p = 0.10
+        self.K_i = 0.15
+        self.K_d = 1.5
         self.Timestep = 0.05
         self.Integral = 0
         self.PrevError = 0
