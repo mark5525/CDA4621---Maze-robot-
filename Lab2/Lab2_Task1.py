@@ -1,33 +1,52 @@
 from HamBot.src.robot_systems.robot import HamBot
 import math
-#
 
 def saturation(bot, rpm):
-    max_rpm = getattr(bot, "max_motor_speed", 60)
+    max_rpm = getattr(Bot, "max_motor_speed", 60)
     if rpm > max_rpm:
         return max_rpm
     if rpm < -max_rpm:
         return -max_rpm
     return rpm
 
+class Defintions():
+    def __init__(self):
+        self.DesiredDistance = 0
+        self.MeasuredDistance = 0
+        self.Error = self.DesiredDistance - self.MeasuredDistance
+        self.Error_Previous = 0
+        self.K_p = 0.2
+        self.K_i = 0.6
+        self.K_d = 0
+        self.Time = 0
+        self.Timestep = 0.032
+        self.Proportional = self.K_p * self.Error
+        self.Integral +=  self.Error * self.Timestep
+        self.Derivative = (self.Error - self.Error_Previous) / self.Timestep
+        self.Control = (self.Proportional * self.Error) + (self.K_i *self.Integral) + (self.K_d * self.Derivative)
+        self.Saturated_Control = saturation(Bot, self.Control)
 
-def forward_PID(Bot, f_distance = 600, kp = 0.2):
-    scan = Bot.get_range_image()
-    d_range = [a for a in scan[175:180] if a > 0]
-    if not d_range:
-        return 0.0
-    actual = min(d_range)
-    e = actual - f_distance
-    rpm_v = kp * e
-    forward_v = saturation(Bot, rpm_v)
-    return forward_v
+    def forward_PID(Bot, desired_distance):
+        Forward_PID_Values = Defintions()
+        scan = Bot.get_range_image()
+        Forward_PID_Values.MeasuredDistance = min([a for a in scan[175:180] if a > 0])
+        if not Forward_PID_Values.MeasuredDistance:
+            return 0.0
+        Forward_PID_Values.DesiredDistance = desired_distance
+        Prev_error = Forward_PID_Values.Error
+        Sat_control = Forward_PID_Values.Saturated_Control
+        Forward_PID_Values.Error_Previous = Prev_error
+
+        return Sat_control
+
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
-
+    desired_distance = 600
+    pp = Defintions()
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
-        forward_velocity = forward_PID(Bot, f_distance = 600, kp=3)
+        forward_velocity = pp.forward_PID(Bot, desired_distance)
         print(forward_velocity)
         if forward_distance > 610:
             Bot.set_left_motor_speed(forward_velocity)
