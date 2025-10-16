@@ -21,7 +21,6 @@ class Defintions():
         self.Time = 0
         self.Integral = 0.0
         self.Timestep = 0.032
-        self.Saturated_Control = saturation(Bot, self.Control)
 
     def forward_PID(self, Bot, desired_distance):
         scan = Bot.get_range_image()
@@ -50,7 +49,7 @@ if __name__ == "__main__":
     pp = Defintions()
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
-        forward_velocity = pp.forward_PID( Bot, d_distance)
+        forward_velocity = pp.forward_PID(Bot, d_distance)
         print("forward velocity", forward_velocity)
         Bot.set_left_motor_speed(forward_velocity)
         Bot.set_right_motor_speed(forward_velocity)
