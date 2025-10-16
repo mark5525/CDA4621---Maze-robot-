@@ -1,192 +1,126 @@
 import time
 from HamBot.src.robot_systems.robot import HamBot
 import math
-import statistics as stats
 
-# ----------------- helpers -----------------
+
+#
 def saturation(bot, rpm):
-    max_rpm = getattr(bot, "max_motor_speed", 40)
-    if rpm > max_rpm:  return max_rpm
-    if rpm < -max_rpm: return -max_rpm
+    max_rpm = getattr(bot, "max_motor_speed", 60)
+    if rpm > max_rpm:
+        return max_rpm
+    if rpm < -max_rpm:
+        return -max_rpm
     return rpm
 
-def _median_positive(seq):
-    vals = [d for d in seq if d and d > 0]
-    return stats.median(vals) if vals else None
 
-def _wrap_deg(x):
-    return ((x + 180.0) % 360.0) - 180.0
-
-# ----------------- controllers -----------------
-def forward_PID(Bot, f_distance=300, kp=0.20):
-    # Median over a wider window = steadier forward speed
+def forward_PID(Bot, f_distance=300, kp=0.8):
     scan = Bot.get_range_image()
-    d_med = _median_positive(scan[173:187])
-    if d_med is None:
+    d_range = [a for a in scan[175:180] if a > 0]
+    if not d_range:
         return 0.0
-    e = d_med - f_distance
+    actual = min(d_range)
+    e = actual - f_distance
+    rpm_v = kp * e
+    forward_v = saturation(Bot, rpm_v)
+    return forward_v
+
+
+def side_PID(Bot, side_follow, side_distance=300, kp=0.10):
+    if side_follow == "left":
+        values = [d for d in Bot.get_range_image()[90:105] if d and d > 0]
+    else:
+        values = [d for d in Bot.get_range_image()[270:285] if d and d > 0]
+    if not values:
+        return 0.0
+    actual = min(values)
+    e = actual - side_distance
     rpm_v = kp * e
     return saturation(Bot, rpm_v)
 
-def side_PD(Bot, side_follow, side_distance, kp=0.045, kd=0.18, deadband=18, state=None, dt=0.05):
-    scan = Bot.get_range_image()
-    if side_follow == "left":
-        s_med = _median_positive(scan[90:108])
-    else:
-        s_med = _median_positive(scan[252:270])
 
-    # keep previous EMA if nothing visible this frame
-    if s_med is None:
-        return 0.0, state
+def rotation(Bot, angle, pivot_rpm=6, timeout_s=4.0, desired_front_distance=300, extra_clear=40, consecutive_clear=1):
+    def _front_mm():
+        scan = Bot.get_range_image()
+        vals = [d for d in scan[178:183] if d and d > 0]
+        return min(vals) if vals else float("inf")
 
-    # EMA smoothing of side distance
-    alpha = 0.70  # higher = smoother
-    s_ema = s_med if state["s_ema"] is None else (alpha * state["s_ema"] + (1 - alpha) * s_med)
+    clear_thresh = desired_front_distance + extra_clear
+    clear_hits = 0
 
-    e = s_ema - side_distance
-    if abs(e) < deadband:
-        e = 0.0
+    rpm = saturation(Bot, abs(pivot_rpm))
 
-    # derivative of error (per second), clipped to avoid spikes
-    de = (e - state["prev_e"]) / max(dt, 1e-3)
-    de = max(-80.0, min(80.0, de))  # clip mm/s
-
-    # PD with derivative *damping*: kp*e - kd*de
-    rpm = kp * e - kd * de
-
-    # update state
-    state["prev_e"] = e
-    state["s_ema"]  = s_ema
-
-    return saturation(Bot, rpm), state
-
-def rotation(Bot, angle_deg, pivot_rpm=7, timeout_s=2.2, tol_deg=1.5):
-    """
-    Pivot by a relative angle using IMU (positive = CCW, negative = CW).
-    Tapers rpm as we get close to the target to avoid overshoot.
-    """
-    start = Bot.get_heading()
-    target = (start + angle_deg) % 360.0
     t0 = time.monotonic()
-
     while True:
-        now = Bot.get_heading()
-        err = _wrap_deg(target - now)
-
-        if abs(err) <= tol_deg:
-            Bot.stop_motors()
-            return
-
-        # proportional taper (rpm per deg), clamped
-        rpm_cmd = max(4.0, min(pivot_rpm, 0.22 * abs(err)))
-        if err > 0:  # need CCW
-            Bot.set_left_motor_speed(-rpm_cmd)
-            Bot.set_right_motor_speed(+rpm_cmd)
-        else:        # need CW
-            Bot.set_left_motor_speed(+rpm_cmd)
-            Bot.set_right_motor_speed(-rpm_cmd)
-
+        fwd = _front_mm()
+        if fwd >= clear_thresh:
+            clear_hits += 1
+            if clear_hits >= consecutive_clear:
+                Bot.stop_motors()
+                return
+        else:
+            clear_hits = 0
+        if angle < 0:
+            Bot.set_left_motor_speed(+rpm)
+            Bot.set_right_motor_speed(-rpm)
+        else:
+            Bot.set_left_motor_speed(-rpm)
+            Bot.set_right_motor_speed(+rpm)
         if timeout_s and (time.monotonic() - t0) > timeout_s:
             Bot.stop_motors()
             return
-
         time.sleep(0.01)
 
-# ----------------- main -----------------
+
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 40
-
-    side_follow = "right"           # "left" or "right"
-    desired_front_distance = 300    # mm
-    desired_side_distance  = 300    # mm
-
-    # corner hysteresis
-    no_side_counter = 0
-    NO_SIDE_THRESH  = 2  # need 2 consecutive frames w/ no side before turning
-
-    # PD state
-    pd_state = {"prev_e": 0.0, "s_ema": None}
-
-    # loop timing
-    last_t = time.monotonic()
+    side_follow = "right"
+    desired_front_distance = 300
+    desired_side_distance = 300
 
     while True:
-        now = time.monotonic()
-        dt = max(0.01, now - last_t)
-        last_t = now
-
         scan = Bot.get_range_image()
+        forward_distance = min([a for a in scan[175:180] if a > 0] or [float("inf")])
 
-        # FRONT (median)
-        front_med = _median_positive(scan[173:187])
-        forward_distance = front_med if front_med is not None else float("inf")
-
-        # SIDE presence (reuse windows)
+        # Check if we can still see the side wall
         if side_follow == "left":
-            side_med_for_presence = _median_positive(scan[90:108])
+            side_values = [d for d in scan[90:105] if d and d > 0]
         else:
-            side_med_for_presence = _median_positive(scan[252:270])
+            side_values = [d for d in scan[270:285] if d and d > 0]
 
-        if side_med_for_presence is None:
-            no_side_counter += 1
-        else:
-            no_side_counter = 0
-
-        # --- Corner: side disappears consistently -> turn into the followed wall ---
-        if no_side_counter >= NO_SIDE_THRESH:
+        # Turn when side wall disappears (reached corner)
+        if not side_values:
             Bot.stop_motors()
-            time.sleep(0.08)
-            # correct directions:
-            # follow LEFT -> +90 (CCW); follow RIGHT -> -90 (CW)
-            rotation(Bot, +90 if side_follow == "left" else -90, pivot_rpm=7)
-            no_side_counter = 0
-            pd_state["s_ema"] = None  # reset smoother after big motion
+            time.sleep(0.1)  # Brief pause
+            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm=12)  # Correct directions
             continue
 
-        # --- Emergency: front wall too close -> same turn as above ---
+        # Emergency turn if too close to front wall
         if forward_distance < desired_front_distance:
-            Bot.stop_motors()
-            rotation(Bot, +90 if side_follow == "left" else -90, pivot_rpm=7)
-            pd_state["s_ema"] = None
+            rotation(Bot, -90 if side_follow == "left" else 90, pivot_rpm=12)  # Correct directions
             continue
 
-        # --- Forward speed with broader slow-down ---
-        slow_zone = desired_front_distance + 260  # mm
-        base_fwd = forward_PID(Bot, f_distance=desired_front_distance, kp=0.20)
+        forward_velocity = forward_PID(Bot, f_distance=300, kp=0.4)  # Lower gain = smoother, less oscillation
+        right_v = forward_velocity
+        left_v = forward_velocity
+        delta_velocity = side_PID(Bot, side_follow=side_follow, side_distance=desired_side_distance,
+                                  kp=0.08)  # Lower gain = gentler corrections
 
-        if forward_distance < slow_zone:
-            # ease off more aggressively near walls
-            alpha = max(0.25, (forward_distance - desired_front_distance) /
-                               max(1.0, slow_zone - desired_front_distance))
-            base_fwd *= alpha
+        lim = max(abs(forward_velocity) * 0.8, 12)  # Ensure at least 12 RPM correction allowed
+        if delta_velocity > lim: delta_velocity = lim
+        if delta_velocity < -lim: delta_velocity = -lim
 
-        # --- Side PD correction (gentle, damped) ---
-        delta, pd_state = side_PD(Bot,
-                                  side_follow=side_follow,
-                                  side_distance=desired_side_distance,
-                                  kp=0.045, kd=0.18, deadband=18,
-                                  state=pd_state, dt=dt)
-
-        # Cap steering to avoid yanking; scale a little with speed
-        steer_cap = min(11.0, max(7.0, 0.45 * abs(base_fwd)))
-        if delta >  steer_cap: delta =  steer_cap
-        if delta < -steer_cap: delta = -steer_cap
-
-        # Compose wheel speeds
-        left_v  = base_fwd
-        right_v = base_fwd
         if side_follow == "left":
-            left_v  = saturation(Bot, left_v  - delta)
-            right_v = saturation(Bot, right_v + delta)
+            left_v = saturation(Bot, left_v - delta_velocity)
+            right_v = saturation(Bot, right_v + delta_velocity)
         else:
-            left_v  = saturation(Bot, left_v  + delta)
-            right_v = saturation(Bot, right_v - delta)
+            left_v = saturation(Bot, left_v + delta_velocity)
+            right_v = saturation(Bot, right_v - delta_velocity)
 
         Bot.set_right_motor_speed(right_v)
         Bot.set_left_motor_speed(left_v)
 
-        time.sleep(0.055)  # ~18 Hz (stable)
+        time.sleep(0.06)  # ~17 Hz - slower loop = more stable, less oscillation
 
 
 
