@@ -14,7 +14,7 @@ class Defintions():
         self.K_p = 0.12
         self.K_i = 0.10
         self.K_d = 1.2
-        self.Timestep = 0.04
+        self.Timestep = 0.05
         self.Integral = 0
         self.PrevError = 0
 
@@ -52,7 +52,6 @@ if __name__ == "__main__":
         if forward_distance != float("inf") and abs(forward_distance - d_distance) <= tolerance:
             Bot.stop_motors()
             break
-        time.sleep(pp.Timestep)
         Bot.set_left_motor_speed(forward_velocity)
         Bot.set_right_motor_speed(forward_velocity)
         print(forward_distance)
