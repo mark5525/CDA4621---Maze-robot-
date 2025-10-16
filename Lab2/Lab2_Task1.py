@@ -14,7 +14,7 @@ class Defintions():
         self.K_p = 0.12
         self.K_i = 0.10
         self.K_d = 1.2
-        self.Timestep = 0.05
+        self.Timestep = 0.04
         self.Integral = 0
         self.PrevError = 0
 
