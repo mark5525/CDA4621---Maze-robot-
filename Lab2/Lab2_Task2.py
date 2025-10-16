@@ -83,7 +83,7 @@ if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 40
 
-    side_follow = "right"           # "left" or "right"
+    side_follow = "left"           # "left" or "right"
     desired_front_distance = 300    # mm
     desired_side_distance  = 300    # mm
 
