@@ -11,28 +11,18 @@ def saturation(bot, rpm):
 
 class Defintions():
     def __init__(self):
-        self.DesiredDistance = 0
-        self.MeasuredDistance = 0
-        self.Error = self.DesiredDistance - self.MeasuredDistance
-        self.Error_Previous = 0
         self.K_p = 0.2
         self.K_i = 0.6
         self.K_d = 0
-        self.Time = 0
         self.Integral = 0.0
         self.Timestep = 0.032
-        self.Proportional = self.K_p * self.Error
-        self.Integral +=  self.Error * self.Timestep
-        self.Derivative = (self.Error - self.Error_Previous) / self.Timestep
-        self.Control = (self.Proportional * self.Error) + (self.K_i *self.Integral) + (self.K_d * self.Derivative)
-        self.Saturated_Control = saturation(Bot, self.Control)
 
     def forward_PID(self, Bot, desired_distance):
         scan = Bot.get_range_image()
         window = [a for a in scan[175:180] if a and a > 0]
         if not window:
             return 0.0
-
+        self.Error_Previous = 0
         # measurements
         self.MeasuredDistance = min(window)
         self.DesiredDistance  = desired_distance
