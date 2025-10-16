@@ -21,7 +21,6 @@ class Defintions():
         self.Time = 0
         self.Integral = 0.0
         self.Timestep = 0.032
-        self.Saturated_Control = saturation(Bot, self.Control)
 
     def forward_PID(self, Bot, desired_distance):
         Forward_PID_Values = Defintions()
