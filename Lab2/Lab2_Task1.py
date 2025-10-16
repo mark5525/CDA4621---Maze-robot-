@@ -28,29 +28,18 @@ class Defintions():
         self.Saturated_Control = saturation(Bot, self.Control)
 
     def forward_PID(self, Bot, desired_distance):
+        Forward_PID_Values = Defintions()
         scan = Bot.get_range_image()
-        window = [a for a in scan[175:180] if a and a > 0]
+        window = [a for a in scan[175:180] if a > 0]
         if not window:
             return 0.0
+        Forward_PID_Values.MeasuredDistance = min(window)
+        Forward_PID_Values.DesiredDistance = desired_distance
+        Prev_error = Forward_PID_Values.Error
+        Sat_control = Forward_PID_Values.Saturated_Control
+        Forward_PID_Values.Error_Previous = Prev_error
 
-        # measurements
-        self.MeasuredDistance = min(window)
-        self.DesiredDistance  = desired_distance
-
-        # PID terms
-        self.Error = self.MeasuredDistance - self.DesiredDistance
-        derr = (self.Error - self.Error_Previous) / self.Timestep
-        self.Integral += self.Error * self.Timestep
-        self.Proportional = self.K_p * self.Error
-        self.Derivative  = self.K_d * derr
-
-        # control (note: NOT P*Error)
-        self.Control = self.Proportional + self.K_i*self.Integral + self.Derivative
-        out = saturation(Bot, self.Control)
-
-        # prepare for next tick
-        self.Error_Previous = self.Error
-        return out
+        return Sat_control
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
