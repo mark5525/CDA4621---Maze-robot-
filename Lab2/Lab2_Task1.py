@@ -27,7 +27,7 @@ class Defintions():
         self.Control = (self.Proportional * self.Error) + (self.K_i *self.Integral) + (self.K_d * self.Derivative)
         self.Saturated_Control = saturation(Bot, self.Control)
 
-    def forward_PID(Bot, desired_distance):
+    def forward_PID(self, Bot, desired_distance):
         Forward_PID_Values = Defintions()
         scan = Bot.get_range_image()
         Forward_PID_Values.MeasuredDistance = min([a for a in scan[175:180] if a > 0])
@@ -47,7 +47,7 @@ if __name__ == "__main__":
     pp = Defintions()
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
-        forward_velocity = pp.forward_PID(Bot, d_distance)
+        forward_velocity = pp.forward_PID( Bot, d_distance)
         print(forward_velocity)
         if forward_distance > 610:
             Bot.set_left_motor_speed(forward_velocity)
