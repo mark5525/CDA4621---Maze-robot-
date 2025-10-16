@@ -38,7 +38,7 @@ class Defintions():
         self.DesiredDistance  = desired_distance
 
         # PID terms
-        self.Error = self.DesiredDistance - self.MeasuredDistance
+        self.Error = self.MeasuredDistance - self.DesiredDistance
         derr = (self.Error - self.Error_Previous) / self.Timestep
         self.Integral += self.Error * self.Timestep
         self.Proportional = self.K_p * self.Error
