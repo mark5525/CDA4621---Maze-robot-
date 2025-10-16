@@ -30,7 +30,8 @@ class Defintions():
     def forward_PID(self, Bot, desired_distance):
         Forward_PID_Values = Defintions()
         scan = Bot.get_range_image()
-        Forward_PID_Values.MeasuredDistance = min([a for a in scan[175:180] if a > 0])
+        window = [a for a in scan[175:180] if a > 0]
+        Forward_PID_Values.MeasuredDistance = min(window)
         if not Forward_PID_Values.MeasuredDistance:
             return 0.0
         Forward_PID_Values.DesiredDistance = desired_distance
