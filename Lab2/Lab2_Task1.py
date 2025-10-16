@@ -31,9 +31,9 @@ class Defintions():
         Forward_PID_Values = Defintions()
         scan = Bot.get_range_image()
         window = [a for a in scan[175:180] if a > 0]
-        Forward_PID_Values.MeasuredDistance = min(window)
-        if not Forward_PID_Values.MeasuredDistance:
+        if not window:
             return 0.0
+        Forward_PID_Values.MeasuredDistance = min(window)
         Forward_PID_Values.DesiredDistance = desired_distance
         Prev_error = Forward_PID_Values.Error
         Sat_control = Forward_PID_Values.Saturated_Control
