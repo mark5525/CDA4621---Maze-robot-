@@ -42,8 +42,6 @@ class Defintions():
         Forward_PID_Values.Control = (Forward_PID_Values.Proportional * Forward_PID_Values.Error) + (Forward_PID_Values.K_i *self.Integral) + (Forward_PID_Values.K_d * self.Derivative)
         Sat_control = Forward_PID_Values.Saturated_Control
         Forward_PID_Values.Error_Previous = Prev_error
-        brake_start = 200
-        scale = min(1,abs(Forward_PID_Values.Error)/brake_start)
 
         return Sat_control
 
