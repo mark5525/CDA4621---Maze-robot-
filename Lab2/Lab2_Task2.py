@@ -57,24 +57,56 @@ class Defintions():
 
         return saturation(bot, u)
 
-def side_PID(bot, desired_distance):
+    def side_PID(self, bot, s_follow, desired_distance):
+        scan = bot.get_range_image()
+        window = [a for a in scan[175:180] if a and a > 0]
+        if not window:
+            return 0.0
 
+        sideActual = min(window)
+        error = sideActual - desired_distance
+
+        if abs(error) <= self.StopBand:
+            self.Integral = 0.0
+            self.PrevError = 0.0
+            return 0.0
+
+        # PID terms
+        self.Integral += error * self.Timestep
+        # NEW: anti-windup clamp
+        self.Integral = max(-self.I_Limit, min(self.Integral, self.I_Limit))
+
+        derivative = (error - self.PrevError) / self.Timestep
+        self.PrevError = error
+
+        u = (self.K_p * error) + (self.K_i * self.Integral) + (self.K_d * derivative)
+
+        # NEW: soft approach – limit RPM based on how close you are
+        cap = max(self.MinApproachRPM, self.ApproachSlope * abs(error))
+        u = math.copysign(min(abs(u), cap), u)
+
+        return saturation(bot, u)
+
+    def rotate():
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
     wall_follow = "left"
     d_distance = 300
-    s_distance = 300
     pp = Defintions()
 
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
-        forward_velocity = pp.forward_PID(Bot, d_distance)
+        forward_velocity = pp.side_PID(Bot, wall_follow, d_distance)
         print("v=", forward_velocity, "dist=", forward_distance)
-        # stop when inside the band
+        if wall_follow == "left":
+
+        if wall_follow == "right":
+
+
         if forward_distance != float("inf") and abs(forward_distance - d_distance) <= pp.StopBand:
-            Bot.stop_motors()
+            pp.rotate()
             break
 
         Bot.set_left_motor_speed(forward_velocity)

@@ -8,57 +8,44 @@ def saturation(bot, rpm):
     return rpm
 
 def _ang_norm_deg(a):
-    # normalize to (-180, 180]
-    a = (a + 180.0) % 360.0 - 180.0
-    return a
+    return (a + 180.0) % 360.0 - 180.0
 
 class Defintions():
     def __init__(self):
-        # Forward “approach” PID (you already had these)
+        # Forward PID (kept)
         self.K_p = 0.10
         self.K_i = 0.15
         self.K_d = 1.5
 
-        # Side wall-follow PID
-        self.Kp = 2.0
-        self.Ki = 0.0
-        self.Kd = 5.0
-
-        # Yaw (heading) PD for clean 90° rotations
-        self.K_yaw_p = 0.9
-        self.K_yaw_d = 0.2
+        # Side PID
+        self.Kp = 2
+        self.Ki = 0
+        self.Kd = 5
 
         self.Timestep = 0.025
-
-        # forward PID state
         self.Integral = 0.0
         self.PrevError = 0.0
 
-        # side PID state
+        # Separate state for side PID (NEW, necessary)
         self.SideIntegral = 0.0
         self.SidePrevError = 0.0
 
-        # NEW: gentle-stop helpers (forward only)
-        self.StopBand = 10.0           # mm (tune 8–15)
-        self.I_Limit  = 200.0          # integral clamp
-        self.ApproachSlope = 0.5       # rpm per mm (speed cap shrinks near target)
-        self.MinApproachRPM = 6.0      # don't crawl too slowly far out
+        # gentle-stop helpers (kept)
+        self.StopBand = 10.0
+        self.I_Limit  = 200.0
+        self.ApproachSlope = 0.5
+        self.MinApproachRPM = 6.0
 
-    # ---------- SENSING HELPERS ----------
-    @staticmethod
-    def _min_valid(scan_slice):
-        vals = [d for d in scan_slice if d and d > 0]
-        return min(vals) if vals else float("inf")
+        # Wall-follow params (NEW)
+        self.cruise_rpm = 22.0          # base forward speed
+        self.yaw_limit  = 30.0          # max steering authority (rpm)
+        self.front_turn_thresh_mm = 260 # if front < this, 90° away
+        self.open_wrap_extra_mm   = 140 # if side > desired + extra, 90° toward
 
-    def read_distances(self, bot):
-        scan = bot.get_range_image()
-        # Lidar convention (your note): 0° back, 90° left, 180° front, 270° right
-        front = self._min_valid(scan[170:190])
-        left  = self._min_valid(scan[ 85:105])
-        right = self._min_valid(scan[265:285])
-        return front, left, right
+        # Turn PD (for rotate)
+        self.K_yaw_p = 1.0
+        self.K_yaw_d = 0.25
 
-    # ---------- FORWARD (kept from Task 1, used here only if you want approach control) ----------
     def forward_PID(self, bot, desired_distance):
         scan = bot.get_range_image()
         window = [a for a in scan[175:180] if a and a > 0]
@@ -68,165 +55,149 @@ class Defintions():
         measured_distance = min(window)
         error = measured_distance - desired_distance
 
-        # clean stop when close, and prevent re-accel
         if abs(error) <= self.StopBand:
             self.Integral = 0.0
             self.PrevError = 0.0
             return 0.0
 
-        # PID terms
         self.Integral += error * self.Timestep
         self.Integral = max(-self.I_Limit, min(self.Integral, self.I_Limit))
         derivative = (error - self.PrevError) / self.Timestep
         self.PrevError = error
 
         u = (self.K_p * error) + (self.K_i * self.Integral) + (self.K_d * derivative)
-
-        # soft approach – limit RPM based on how close you are
         cap = max(self.MinApproachRPM, self.ApproachSlope * abs(error))
         u = math.copysign(min(abs(u), cap), u)
-
         return saturation(bot, u)
 
-    # ---------- SIDE WALL-FOLLOW PID ----------
-    def side_PID(self, bot, side_follow: str, desired_distance_mm: float):
+    def side_PID(self, bot, s_follow, desired_distance):
         """
-        Returns a steering 'yaw' term in RPM to be *added* to right wheel and *subtracted* from left wheel.
-        Positive yaw => CCW turn. Sign is chosen so 'too far from the wall' steers back toward it.
+        Returns steering 'yaw' in RPM. +yaw means CCW (left) turn authority.
         """
-        front, left, right = self.read_distances(bot)
-        measured = left if side_follow == "left" else right
+        scan = bot.get_range_image()
+        if s_follow == "left":
+            side_vals = [a for a in scan[85:105] if a and a > 0]
+        else:
+            side_vals = [a for a in scan[265:285] if a and a > 0]
 
-        # error is positive when we're too far from the wall
-        err = (measured - desired_distance_mm)
+        if not side_vals:
+            return 0.0  # no side reading; main loop will handle wrap
 
-        # PID with separate side integral
-        self.SideIntegral += err * self.Timestep
+        sideActual = min(side_vals)
+        error = sideActual - desired_distance  # + if too far from wall
+
+        # side PID (separate state)
+        self.SideIntegral += error * self.Timestep
         self.SideIntegral = max(-300.0, min(self.SideIntegral, 300.0))
-        d_err = (err - self.SidePrevError) / self.Timestep
-        self.SidePrevError = err
+        d_err = (error - self.SidePrevError) / self.Timestep
+        self.SidePrevError = error
 
-        yaw = (self.Kp * err) + (self.Ki * self.SideIntegral) + (self.Kd * d_err)
+        yaw = (self.Kp * error) + (self.Ki * self.SideIntegral) + (self.Kd * d_err)
 
-        # map 'too far' => turn toward that wall
-        #   left-follow: positive err (too far) => CCW => +yaw
-        #   right-follow: positive err (too far) => CW  => -yaw
-        yaw = yaw if side_follow == "left" else -yaw
+        # If following right wall, flip sign so +error (too far) turns toward the right
+        if s_follow == "right":
+            yaw = -yaw
 
-        # limit steer authority
-        yaw = max(-30.0, min(30.0, yaw))
+        # limit steering authority (do NOT clamp to max motor speed)
+        yaw = max(-self.yaw_limit, min(self.yaw_limit, yaw))
         return yaw
 
-    # ---------- 90° ROTATIONS USING HEADING ----------
-    def rotate_relative_deg(self, bot, delta_deg, base_spin_rpm=30, tol_deg=2.0, max_time=3.0):
+    def rotate(self, direction="left", angle_deg=90, bot=None, timeout=3.0):
         """
-        Closed-loop 90° (or any) in-place rotation using heading PD.
+        In-place rotation. direction: 'left' (CCW) or 'right' (CW).
+        Uses IMU heading if available; else timed open-loop spin.
         """
-        if not hasattr(bot, "get_heading"):
-            # fallback: open-loop spin if IMU not available
-            sign = 1.0 if delta_deg > 0 else -1.0
-            bot.set_left_motor_speed(-sign * base_spin_rpm)
-            bot.set_right_motor_speed( sign * base_spin_rpm)
-            time.sleep(abs(delta_deg) / 90.0 * 1.0)  # ~1s per 90°
-            bot.stop_motors()
+        b = bot if bot is not None else globals().get("Bot")
+        if b is None:
             return
 
-        start = bot.get_heading()
-        target = (start + delta_deg) % 360.0
-        prev_err = _ang_norm_deg(target - bot.get_heading())
-        t0 = time.time()
+        sign = 1.0 if direction == "left" else -1.0
+        base_rpm = 30.0
 
-        while True:
-            now_h = bot.get_heading()
-            err = _ang_norm_deg(target - now_h)
-            d_err = (err - prev_err) / self.Timestep
-            prev_err = err
+        if hasattr(b, "get_heading") and callable(b.get_heading):
+            start = b.get_heading()
+            target = (start + sign * angle_deg) % 360.0
+            prev_err = _ang_norm_deg(target - b.get_heading())
+            t0 = time.time()
+            while True:
+                now_h = b.get_heading()
+                err = _ang_norm_deg(target - now_h)
+                d_err = (err - prev_err) / self.Timestep
+                prev_err = err
 
-            u = self.K_yaw_p * err + self.K_yaw_d * d_err
-            u = max(-base_spin_rpm, min(base_spin_rpm, u))
+                u = self.K_yaw_p * err + self.K_yaw_d * d_err
+                u = max(-base_rpm, min(base_rpm, u))
 
-            # CCW for +u
-            bot.set_left_motor_speed(-u)
-            bot.set_right_motor_speed(+u)
+                b.set_left_motor_speed(-u)
+                b.set_right_motor_speed(+u)
 
-            if abs(err) <= tol_deg:  # finished
-                break
-            if time.time() - t0 > max_time:  # give up safety
-                break
-            time.sleep(self.Timestep)
+                if abs(err) <= 2.0:
+                    break
+                if time.time() - t0 > timeout:
+                    break
+                time.sleep(self.Timestep)
+            b.stop_motors()
+            time.sleep(0.05)
+        else:
+            # fallback timed spin
+            b.set_left_motor_speed(-sign * base_rpm)
+            b.set_right_motor_speed( sign * base_rpm)
+            time.sleep(abs(angle_deg) / 90.0)  # ~1s per 90°
+            b.stop_motors()
+            time.sleep(0.05)
 
-        bot.stop_motors()
-        # small settle
-        time.sleep(0.05)
-
-    # ---------- HIGH-LEVEL WALL FOLLOW ----------
-    def follow_wall_loop(self, bot, side_follow="left",
-                         side_distance_mm=300.0,
-                         cruise_rpm=22.0,
-                         front_turn_thresh_mm=260.0,
-                         open_wrap_extra_mm=140.0):
-        """
-        Main loop: follow a wall; on front block => turn 90° away from obstacle;
-        on opening at the followed side => wrap 90° into the opening and continue.
-        """
-        assert side_follow in ("left", "right")
-        wrap_sign = +1 if side_follow == "left" else -1   # +90 for left-follow, -90 for right-follow
-        away_sign = -wrap_sign                             # opposite direction when front is blocked
-
-        while True:
-            front, left, right = self.read_distances(bot)
-            side_meas = left if side_follow == "left" else right
-
-            # --- 1) Frontal obstacle => rotate 90° away and continue
-            if front < front_turn_thresh_mm:
-                bot.stop_motors()
-                self.rotate_relative_deg(bot, away_sign * 90.0)
-                # reset side PID state after discrete turns
-                self.SideIntegral = 0.0
-                self.SidePrevError = 0.0
-                continue
-
-            # --- 2) Wall ends (opening) => wrap 90° toward the chosen wall
-            if side_meas > (side_distance_mm + open_wrap_extra_mm) or math.isinf(side_meas):
-                bot.stop_motors()
-                self.rotate_relative_deg(bot, wrap_sign * 90.0)
-                self.SideIntegral = 0.0
-                self.SidePrevError = 0.0
-                continue
-
-            # --- 3) Regular wall follow: drive forward with side PID steering
-            yaw = self.side_PID(bot, side_follow, side_distance_mm)
-
-            left_cmd  = saturation(bot, cruise_rpm - yaw)
-            right_cmd = saturation(bot, cruise_rpm + yaw)
-
-            bot.set_left_motor_speed(left_cmd)
-            bot.set_right_motor_speed(right_cmd)
-            time.sleep(self.Timestep)
-
-# -------------------- RUNNERS --------------------
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
 
-    # Choose the wall to hug and the target standoff distance
-    # Run once with "left" (maze1.xml), then again with "right".
-    wall_follow_mode = "left"      # "left" or "right"
-    side_standoff_mm = 300.0       # desired distance to wall
-    cruise_rpm       = 22.0        # forward cruise (adjust per maze)
+    wall_follow = "left"  # "left" or "right"
+    d_distance  = 300     # desired side standoff (mm)
+    pp = Defintions()
 
-    ctrl = Defintions()
-    try:
-        ctrl.follow_wall_loop(
-            Bot,
-            side_follow=wall_follow_mode,
-            side_distance_mm=side_standoff_mm,
-            cruise_rpm=cruise_rpm,
-            front_turn_thresh_mm=260.0,   # turn away when closer than this
-            open_wrap_extra_mm=140.0      # "opening" if side > standoff + extra
-        )
-    finally:
-        Bot.stop_motors()
+    # map turn directions once (keeps your if-structure, minimal edits)
+    if wall_follow == "left":
+        turn_away = "right"  # on front block, turn away from followed wall
+        wrap_dir  = "left"   # when wall ends, wrap toward followed wall
+    if wall_follow == "right":
+        turn_away = "left"
+        wrap_dir  = "right"
+
+    while True:
+        scan = Bot.get_range_image()
+        forward_distance = min([a for a in scan[175:185] if a and a > 0] or [float("inf")])
+
+        # side distance for opening detection
+        if wall_follow == "left":
+            side_vals = [a for a in scan[85:105] if a and a > 0]
+        else:
+            side_vals = [a for a in scan[265:285] if a and a > 0]
+        side_distance = min(side_vals) if side_vals else float("inf")
+
+        # 1) frontal obstacle -> 90° away, continue
+        if forward_distance < pp.front_turn_thresh_mm:
+            Bot.stop_motors()
+            pp.rotate(direction=turn_away, bot=Bot)
+            pp.SideIntegral = 0.0
+            pp.SidePrevError = 0.0
+            continue
+
+        # 2) wall ends (opening) -> 90° toward the followed wall
+        if (math.isinf(side_distance)) or (side_distance > d_distance + pp.open_wrap_extra_mm):
+            Bot.stop_motors()
+            pp.rotate(direction=wrap_dir, bot=Bot)
+            pp.SideIntegral = 0.0
+            pp.SidePrevError = 0.0
+            continue
+
+        # 3) regular wall-follow: cruise +/- yaw
+        yaw = pp.side_PID(Bot, wall_follow, d_distance)
+        left_cmd  = saturation(Bot, pp.cruise_rpm - yaw)
+        right_cmd = saturation(Bot, pp.cruise_rpm + yaw)
+        Bot.set_left_motor_speed(left_cmd)
+        Bot.set_right_motor_speed(right_cmd)
+
+        print(f"yaw={yaw:.1f}  front={forward_distance:.0f}  side={side_distance:.0f}")
+        time.sleep(pp.Timestep)
 
 
 
