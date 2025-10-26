@@ -12,6 +12,9 @@ class Defintions():
         self.K_p = 0.10
         self.K_i = 0.15
         self.K_d = 1.5
+        self.Kp = 2
+        self.Ki = 0
+        self.Kd = 5
         self.Timestep = 0.025
         self.Integral = 0.0
         self.PrevError = 0.0
@@ -54,11 +57,15 @@ class Defintions():
 
         return saturation(bot, u)
 
+def side_PID(bot, desired_distance):
+
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
-    d_distance = 600
+    wall_follow = "left"
+    d_distance = 300
+    s_distance = 300
     pp = Defintions()
 
     while True:
