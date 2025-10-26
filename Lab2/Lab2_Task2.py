@@ -67,6 +67,11 @@ class Defintions():
         sideActual = min(window)
         error = sideActual - desired_distance
 
+        if abs(error) <= self.StopBand:
+            self.Integral = 0.0
+            self.PrevError = 0.0
+            return 0.0
+
         P = self.Kp * error
 
         self.Integral += error * self.Timestep
