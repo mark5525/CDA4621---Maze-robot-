@@ -17,6 +17,7 @@ class Defintions():
         self.Kd = 5
         self.Timestep = 0.025
         self.Integral = 0.0
+        self.Derivative = 0.0
         self.PrevError = 0.0
 
         # NEW: gentle-stop helpers
@@ -66,26 +67,19 @@ class Defintions():
         sideActual = min(window)
         error = sideActual - desired_distance
 
-        if abs(error) <= self.StopBand:
-            self.Integral = 0.0
-            self.PrevError = 0.0
-            return 0.0
+        P = self.Kp * error
 
-        # PID terms
         self.Integral += error * self.Timestep
-        # NEW: anti-windup clamp
-        self.Integral = max(-self.I_Limit, min(self.Integral, self.I_Limit))
+        self.Integral = max(min(self.Integral, self.I_Limit), -self.I_Limit)
+        I = self.Ki * self.Integral
 
-        derivative = (error - self.PrevError) / self.Timestep
-        self.PrevError = error
+        self.Derivative = (error - self.PrevError) / self.Timestep
+        D= self.Kd * self.Derivative
 
-        u = (self.K_p * error) + (self.K_i * self.Integral) + (self.K_d * derivative)
-
-        # NEW: soft approach – limit RPM based on how close you are
-        cap = max(self.MinApproachRPM, self.ApproachSlope * abs(error))
-        u = math.copysign(min(abs(u), cap), u)
+        u = P + I + D
 
         return saturation(bot, u)
+
 
     def rotate():
 
@@ -101,17 +95,17 @@ if __name__ == "__main__":
         forward_velocity = pp.side_PID(Bot, wall_follow, d_distance)
         print("v=", forward_velocity, "dist=", forward_distance)
         if wall_follow == "left":
-
+            Bot.set_left_motor_speed(forward_velocity)
+            Bot.set_right_motor_speed(forward_velocity)
         if wall_follow == "right":
-
+            Bot.set_right_motor_speed(forward_velocity)
+            Bot.set_left_motor_speed(-forward_velocity)
 
         if forward_distance != float("inf") and abs(forward_distance - d_distance) <= pp.StopBand:
             pp.rotate()
             break
 
-        Bot.set_left_motor_speed(forward_velocity)
-        Bot.set_right_motor_speed(forward_velocity)
-        time.sleep(pp.Timestep)
+
 
 
 
