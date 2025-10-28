@@ -126,31 +126,27 @@ if __name__ == "__main__":
     front_goal = 300  # how close to front wall before rotate (mm)
     pp = Defintions()
 
-    try:
-        while True:
-            scan = Bot.get_range_image()
-            fw = [a for a in scan[175:180] if a and a > 0] if isinstance(scan, list) else []
-            forward_distance = min(fw) if fw else float("inf")
 
-            # 1) Base throttle from front PID
-            forward_velocity = pp.side_PID(Bot, wall_follow, d_distance)
+    while True:
+        scan = Bot.get_range_image()
+        fw = [a for a in scan[175:180] if a and a > 0] if isinstance(scan, list) else []
+        forward_distance = min(fw) if fw else float("inf")
 
-            # 4) Close-front override → rotate and continue
-            if forward_distance <= front_goal + pp.StopBand:
-                pp.rotate(Bot, direction=("left" if wall_follow == "left" else "right"))
-                time.sleep(pp.Timestep)
-                continue
+        # 1) Base throttle from front PID
+        forward_velocity = pp.side_PID(Bot, wall_follow, d_distance)
 
-            # 5) Send to motors at end of loop
-            Bot.set_left_motor_speed(forward_velocity)
-            Bot.set_right_motor_speed(forward_velocity)
-
-            # 6) Controller timing
+        # 4) Close-front override → rotate and continue
+        if forward_distance <= front_goal + pp.StopBand:
+            pp.rotate(Bot, direction=("left" if wall_follow == "left" else "right"))
             time.sleep(pp.Timestep)
+            continue
 
-    except KeyboardInterrupt:
-        Bot.set_left_motor_speed(0)
-        Bot.set_right_motor_speed(0)
+        # 5) Send to motors at end of loop
+        Bot.set_left_motor_speed(forward_velocity)
+        Bot.set_right_motor_speed(forward_velocity)
+
+        # 6) Controller timing
+        time.sleep(pp.Timestep)
 
 
 
