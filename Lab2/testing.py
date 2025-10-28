@@ -1,9 +1,9 @@
 """
-HamBot Wall Following (simplified + smooth corner wrap, mm units)
+HamBot Wall Following (simplified + smooth corner wrap + startup pull-in, mm units)
 - Wheel velocities come from side_PID only.
 - forward_PID rotates at 300 mm (immediate).
-- Corner wrap: anticipates sharp bends and arcs around them smoothly,
-  with base-speed ramping to prevent surge.
+- Corner wrap: anticipates sharp bends and arcs smoothly (no surge).
+- Startup pull-in: brief, gentle pull toward the tracked wall to avoid initial drift.
 - Max RPM fixed at 60.
 """
 import time
@@ -96,21 +96,30 @@ class Defintions:
         # Corner wrap parameters (smooth bias + tamed base during wrap)
         self.WrapDiagClear   = 450    # diag must exceed target + 450 mm
         self.WrapSideRiseMM  = 60     # side increases by ~6 cm
-        self.WrapBiasMax     = 14.0   # max wrap bias (rpm)
-        self.WrapBiasGain    = 0.03   # rpm per mm of (diag - target)
-        self.WrapHoldSec     = 0.35   # hold bias briefly
+        self.WrapBiasMax     = 10.0   # smaller = gentler wraps (was 14)
+        self.WrapBiasGain    = 0.02   # rpm per mm of (diag - target) (was 0.03)
+        self.WrapHoldSec     = 0.25   # shorter hold (was 0.35)
         self.wrap_until_ts   = 0.0
         self.prev_side_meas  = 300.0
 
-        self.WrapBaseScale   = 0.55   # scale base while wrapping
-        self.WrapBaseMax     = 32.0   # cap base during wrap
+        self.WrapBaseScale   = 0.50   # stronger tame of base during wrap (was 0.55)
+        self.WrapBaseMax     = 28.0   # lower cap during wrap (was 32)
         self.WrapBiasLPAlpha = 0.35   # ramp-in for wrap bias
         self.wrap_bias_lp    = 0.0
+        self.WrapSteerFrac   = 0.45   # lower steer cap fraction while wrapping
+
+        # --- Startup pull-in (prevents initial drift away) ---
+        self.StartLockBand     = 25.0   # mm band around 300 to consider "locked"
+        self.StartLockFrames   = 8      # consecutive frames inside band
+        self.StartPullBiasRPM  = 6.0    # small steer bias into the tracked wall
+        self.StartBaseMax      = 28.0   # cap base until lock
+        self.start_lock_counter = 0
+        self.start_locked       = False
 
         self.prev_err_side = 0.0
         self.Timestep = dt
 
-    # -------- side PID → wheel velocities (with smooth corner wrap) --------
+    # -------- side PID → wheel velocities (with smooth corner wrap + startup pull-in) --------
     def side_PID(self, wall="left", target_mm=300):
         scan = bot.get_range_image()
         if not isinstance(scan, list) or len(scan) < 300:
@@ -127,6 +136,16 @@ class Defintions:
             d_diag     = median_valid_mm(scan[240:260])  # ahead-right
 
         d_side = min(d_primary, d_fallback)
+
+        # --- Startup lock detection + pull-in bias/base cap ---
+        if abs(d_side - target_mm) <= self.StartLockBand:
+            self.start_lock_counter += 1
+            if self.start_lock_counter >= self.StartLockFrames:
+                self.start_locked = True
+        else:
+            # if we drift out early, keep trying to lock
+            if not self.start_locked:
+                self.start_lock_counter = 0
 
         # --- No-wall persistence -> gentle search arc (avoid tight circles)
         if d_side >= NO_WALL_THRESH:
@@ -172,7 +191,11 @@ class Defintions:
 
         steer_raw = kp * err + kd * derr
 
-        # Wrap bias with smooth ramp-in & correct direction
+        # Startup pull-in: nudge steer toward tracked wall + clamp base early
+        if not self.start_locked:
+            steer_raw += (self.StartPullBiasRPM if wall == "left" else -self.StartPullBiasRPM)
+
+        # Wrap bias with smooth ramp-in & correct direction (gentler limits)
         if wrap_active:
             raw_bias = min(self.WrapBiasMax, self.WrapBiasGain * max(0.0, d_diag - target_mm))
         else:
@@ -187,9 +210,11 @@ class Defintions:
         # Desired base from |err|
         desired_base = min(self.BaseMax, max(self.BaseMin, self.BaseGain * abs(err)))
 
-        # Tame base during wrap (scale + cap), then ramp/slew to avoid surge
+        # Tame base during wrap OR before startup lock (scale + cap), then ramp/slew
         if wrap_active:
             desired_base = min(self.WrapBaseMax, self.WrapBaseScale * desired_base)
+        if not self.start_locked:
+            desired_base = min(desired_base, self.StartBaseMax)
 
         base_lp = (1 - self.BaseLPAlpha) * self.prev_base + self.BaseLPAlpha * desired_base
         delta   = max(-self.BaseSlew, min(self.BaseSlew, base_lp - self.prev_base))
@@ -197,8 +222,9 @@ class Defintions:
         self.prev_base = base
 
         # Steering clamps relative to (possibly reduced) base
-        steer_cap = min(self.SteerFrac * max(base, 1.0), self.SteerMax)
-        steer = math.copysign(min(abs(steer), steer_cap), steer)
+        steer_frac = self.WrapSteerFrac if wrap_active else self.SteerFrac
+        steer_cap  = min(steer_frac * max(base, 1.0), self.SteerMax)
+        steer      = math.copysign(min(abs(steer), steer_cap), steer)
 
         # Mix signed steer into wheels
         if wall == "left":
