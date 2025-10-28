@@ -63,7 +63,7 @@ class Defintions():
             return 0.0  # or raise
 
         scan = bot.get_range_image()
-        sl = slice(85, 95) if s_follow == "left" else slice(265, 275)
+        sl = slice(80, 100) if s_follow == "left" else slice(260, 280)
         window = [a for a in scan[sl] if a and a > 0]
 
         if not window:
