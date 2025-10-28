@@ -97,28 +97,76 @@ class Defintions():
 
         return saturation(bot, u)
 
-    def rotate():
+    def rotate(self, bot, direction="left", rpm=20, duration=0.70):
+        """
+        Simple in-place spin ~90°. No yaw/IMU. Tune 'duration' to your robot.
+        Resets integrator to avoid stale history after rotation.
+        """
+        if direction == "left":
+            left_cmd, right_cmd = -abs(rpm), abs(rpm)
+        else:
+            left_cmd, right_cmd = abs(rpm), -abs(rpm)
+
+        bot.set_left_motor_speed(left_cmd)
+        bot.set_right_motor_speed(right_cmd)
+        time.sleep(duration)
+        bot.set_left_motor_speed(0)
+        bot.set_right_motor_speed(0)
+
+        # Reset controller memory after the maneuver
+        self.Integral = 0.0
+        self.PrevError = 0.0
+        time.sleep(self.Timestep)
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
-    wall_follow = "left"
-    d_distance = 300
+    wall_follow = "left"  # or "right"
+    d_distance = 300  # side distance goal (mm)
+    front_goal = 400  # how close to front wall before rotate (mm)
+    cruise_rpm = 40  # cap forward throttle so steering has authority
     pp = Defintions()
 
-    while True:
-        forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
+    try:
+        while True:
+            scan = Bot.get_range_image()
+            fw = [a for a in scan[175:180] if a and a > 0] if isinstance(scan, list) else []
+            forward_distance = min(fw) if fw else float("inf")
 
-        if wall_follow == "left":
-            forward_velocity = pp.side_PID(Bot, wall_follow, d_distance)
-            print("v=", forward_velocity, "dist=", forward_distance)
-        if wall_follow == "right":
-            forward_velocity = pp.side_PID(Bot, wall_follow, d_distance)
-            print("v=", forward_velocity, "dist=", forward_distance)
+            # 1) Base throttle from front PID
+            base = pp.forward_PID(Bot, front_goal)
+            base = math.copysign(min(abs(base), cruise_rpm), base)
 
-        if forward_distance != float("inf") and abs(forward_distance - d_distance) <= pp.StopBand:
-            pp.rotate()
+            # 2) Steering from side PID
+            steer = pp.side_PID(Bot, wall_follow, d_distance)
 
+            # 3) Mix to wheels (flip based on wall side)
+            if wall_follow == "left":
+                left_cmd = saturation(Bot, base - steer)
+                right_cmd = saturation(Bot, base + steer)
+            else:
+                left_cmd = saturation(Bot, base + steer)
+                right_cmd = saturation(Bot, base - steer)
+
+            # 4) Close-front override → rotate and continue
+            if forward_distance <= front_goal + pp.StopBand:
+                pp.rotate(Bot, direction=("left" if wall_follow == "left" else "right"))
+                # Skip stale commands this iteration
+                Bot.set_left_motor_speed(0)
+                Bot.set_right_motor_speed(0)
+                time.sleep(pp.Timestep)
+                continue
+
+            # 5) Send to motors at end of loop
+            Bot.set_left_motor_speed(left_cmd)
+            Bot.set_right_motor_speed(right_cmd)
+
+            # 6) Controller timing
+            time.sleep(pp.Timestep)
+
+    except KeyboardInterrupt:
+        Bot.set_left_motor_speed(0)
+        Bot.set_right_motor_speed(0)
 
 
 
