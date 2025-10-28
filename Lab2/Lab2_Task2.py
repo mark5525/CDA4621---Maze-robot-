@@ -138,9 +138,6 @@ if __name__ == "__main__":
             # 4) Close-front override → rotate and continue
             if forward_distance <= front_goal + pp.StopBand:
                 pp.rotate(Bot, direction=("left" if wall_follow == "left" else "right"))
-                # Skip stale commands this iteration
-                Bot.set_left_motor_speed(0)
-                Bot.set_right_motor_speed(0)
                 time.sleep(pp.Timestep)
                 continue
 
