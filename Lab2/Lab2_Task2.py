@@ -142,11 +142,11 @@ if __name__ == "__main__":
 
             # 3) Mix to wheels (flip based on wall side)
             if wall_follow == "left":
-                left_cmd = saturation(Bot, base - steer)
-                right_cmd = saturation(Bot, base + steer)
-            else:
                 left_cmd = saturation(Bot, base + steer)
                 right_cmd = saturation(Bot, base - steer)
+            else:
+                left_cmd = saturation(Bot, base - steer)
+                right_cmd = saturation(Bot, base + steer)
 
             # 4) Close-front override → rotate and continue
             if forward_distance <= front_goal + pp.StopBand:
