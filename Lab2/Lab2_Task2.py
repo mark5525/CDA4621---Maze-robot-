@@ -121,7 +121,7 @@ class Defintions():
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
-    wall_follow = "left"  # or "right"
+    wall_follow = "right"  # or "right"
     d_distance = 300  # side distance goal (mm)
     front_goal = 300  # how close to front wall before rotate (mm)
     pp = Defintions()
