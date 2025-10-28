@@ -1,200 +1,254 @@
 """
-HamBot Wall Following PID Controller (Real Robot Version)
-Author: Seyoung Kan
-Date: 2025-10-10
+HamBot Wall Following PID Controller (Real Robot Version, mm units)
+Adapted to keep Class `Defintions`, mm throughout, and max RPM = 60
 """
 import time
 import math
-import numpy as np
-from robot_systems.robot import HamBot  # HamBot 라이브러리
+# numpy not required for this mm-only version
+from robot_systems.robot import HamBot  # same import style as your reference
 
 # ========================
 # HamBot Setup
 # ========================
 bot = HamBot(lidar_enabled=True, camera_enabled=False)
-dt = 0.032
-
-# PID state variables
-prev_error = 0
-integral = 0
-prev_angle_error = 0
-angleIntegral = 0
-
+bot.max_motor_speed = 60  # keep max RPM at 60
+dt = 0.032                # loop timestep (we'll also set pp.Timestep = dt)
 
 # ========================
 # Utility functions
 # ========================
-def resetPID():
-    global prev_error, integral, prev_angle_error, angleIntegral
-    print("restPID")
-    prev_error = 0
-    integral = 0
-    prev_angle_error = 0
-    angleIntegral = 0
+SENSOR_MAX_MM  = 9500   # ~9.5 m fallback (mm)
+NO_WALL_THRESH = 2500   # 2.5 m in mm
 
-
-def safe_distance(value, max_range=9.5):
-    print("safe_distance")
-    if math.isinf(value) or math.isnan(value):
+def safe_distance(value_mm, max_range=SENSOR_MAX_MM):
+    # Clamp bad values to "far" so logic treats as no wall
+    try:
+        v = float(value_mm)
+        if math.isinf(v) or math.isnan(v) or v <= 0:
+            return max_range
+        return min(v, max_range)
+    except:
         return max_range
-    return min(value, max_range)
 
-
-def saturation(speed, max_speed=20):
-    print("saturation")
-    return max(min(speed, max_speed), -max_speed)
-
+def saturation(speed_rpm, max_speed=None):
+    # Use robot’s max if not provided; max is 60 by requirement
+    limit = bot.max_motor_speed if max_speed is None else max_speed
+    return max(min(speed_rpm, limit), -limit)
 
 # ========================
-# PID Controllers
+# Your controller class (kept)
 # ========================
-def forwardPID(target_distance=0.4):
-    global prev_error, integral
-    print("ForwardPID")
-    lidar = bot.get_range_image()
-    actual_distance = np.mean([safe_distance(v) for v in lidar[175:185]]) / 600
-    error = actual_distance - target_distance
+class Defintions():
+    def __init__(self):
+        # Forward PID gains (rpm per mm)
+        self.K_p = 0.10
+        self.K_i = 0.15
+        self.K_d = 1.5
 
-    Kp = 3.0
-    Ki = 0
-    Kd = 0.15
+        # Side PID gains (rpm per mm)
+        self.Kp = 2
+        self.Ki = 0
+        self.Kd = 5
 
-    P = Kp * error
-    I = Ki * integral
-    D = Kd * (error - prev_error) / dt
-    prev_error = error
-    integral += error * dt
+        self.Timestep = 0.025  # will be overwritten to dt below
 
-    v = P + I + D
-    return saturation(v)
+        # Separate PID states (forward & side)
+        self.ForwardIntegral = 0.0
+        self.ForwardPrevError = 0.0
+        self.SideIntegral = 0.0
+        self.SidePrevError = 0.0
 
+        # Helpers
+        self.StopBand = 10.0       # mm
+        self.I_Limit  = 200.0      # integral clamp
+        self.ApproachSlope = 0.5   # rpm per mm
+        self.MinApproachRPM = 6.0  # rpm
 
-def sidePID(wall="left"):
-    print("SidePID")
-    global prev_angle_error, angleIntegral
-    lidar = bot.get_range_image()
-    side_distance = 0.4
-    Kp = 0.45
-    Ki = 0.00019
-    Kd = 1
+    # ---------- helpers ----------
+    def reset_pids(self):
+        self.ForwardIntegral = 0.0
+        self.ForwardPrevError = 0.0
+        self.SideIntegral = 0.0
+        self.SidePrevError = 0.0
 
-    actual_left = safe_distance(np.min(lidar[90:115])) / 600
-    actual_right = safe_distance(np.min(lidar[265:290])) / 600
+    # ---------- forward (front-distance) PID -> base throttle ----------
+    def forward_PID(self, desired_distance_mm=400):
+        lidar = bot.get_range_image()
+        win = [safe_distance(v) for v in lidar[175:185]] if isinstance(lidar, list) else []
+        if not win:
+            return 0.0
 
-    if wall == "left" and actual_left > 2.5:
-        return 0.0
-    if wall == "right" and actual_right > 2.5:
-        return 0.0
+        measured = min(win)                 # mm
+        error = measured - desired_distance_mm  # mm
 
-    error = (actual_right - side_distance) if wall == "right" else (actual_left - side_distance)
-    P = Kp * error
-    angleIntegral += error * dt
-    angleIntegral = np.clip(angleIntegral, -1.0, 1.0)
-    I = Ki * angleIntegral
-    D = Kd * (error - prev_angle_error) / dt
-    prev_angle_error = error
+        if abs(error) <= self.StopBand:
+            self.ForwardIntegral = 0.0
+            self.ForwardPrevError = 0.0
+            return 0.0
 
-    angular_velocity = P + I + D
-    return saturation(angular_velocity)
+        # PID
+        self.ForwardIntegral += error * self.Timestep
+        self.ForwardIntegral = max(-self.I_Limit, min(self.ForwardIntegral, self.I_Limit))
+        d_err = (error - self.ForwardPrevError) / self.Timestep
+        self.ForwardPrevError = error
 
+        u = (self.K_p * error) + (self.K_i * self.ForwardIntegral) + (self.K_d * d_err)
 
-# ========================
-# Rotation for corners
-# ========================
-def rotate(radianAngle):
-    print("Rotate")
-    resetPID()
-    base_speed = 1.0
-    left_direction = 1 if radianAngle > 0 else -1
-    right_direction = -left_direction
+        # soft approach
+        cap = max(self.MinApproachRPM, self.ApproachSlope * abs(error))
+        u = math.copysign(min(abs(u), cap), u)
 
-    initial_yaw = bot.get_heading()  # radians
+        return saturation(u)
 
-    while True:
-        current_yaw = bot.get_heading()
-        delta = (current_yaw - initial_yaw + math.pi) % (2 * math.pi) - math.pi
-        if abs(delta) >= abs(radianAngle):
-            bot.set_left_motor_speed(0)
-            bot.set_right_motor_speed(0)
-            break
-        bot.set_left_motor_speed(left_direction * base_speed)
-        bot.set_right_motor_speed(right_direction * base_speed)
-        time.sleep(dt)
-    resetPID()
+    # ---------- side (chosen wall-distance) PID -> steering ----------
+    def side_PID(self, wall="left", desired_distance_mm=400):
+        if wall not in ("left", "right"):
+            return 0.0
 
+        lidar = bot.get_range_image()
+        if not isinstance(lidar, list):
+            return 0.0
 
-# ========================
-# Wall following
-# ========================
-def wall_follow(wall="left"):
-    print("Wall_Following")
-    lidar = bot.get_range_image()
-    left_distance = safe_distance(np.min(lidar[90:115])) / 600
-    print("LEFT D: ", left_distance)
-    right_distance = safe_distance(np.min(lidar[265:290])) / 600
-    print("Right D: ", right_distance)
-    target = 0.4
+        left_vals  = [safe_distance(v) for v in lidar[90:115]]
+        right_vals = [safe_distance(v) for v in lidar[265:290]]
+        actual_left  = min(left_vals)  if left_vals  else SENSOR_MAX_MM
+        actual_right = min(right_vals) if right_vals else SENSOR_MAX_MM
 
-    linear_velocity = forwardPID(target_distance=target)
-    angular_velocity = sidePID(wall)
+        # if no wall on the chosen side, return 0; search handled in wall_follow
+        if wall == "left" and actual_left >= NO_WALL_THRESH:
+            return 0.0
+        if wall == "right" and actual_right >= NO_WALL_THRESH:
+            return 0.0
 
-    rightv = leftv = linear_velocity
+        side_meas = actual_right if wall == "right" else actual_left
+        error = side_meas - desired_distance_mm  # mm
 
-    search_sign = +1 if wall == "right" else -1
-    side_distance = right_distance if wall == "right" else left_distance
+        if abs(error) <= self.StopBand:
+            self.SideIntegral = 0.0
+            self.SidePrevError = 0.0
+            return 0.0
 
-    if side_distance >= 2.5:
-        # No wall detected → gentle arc
-        base = 0.6 * linear_velocity
-        bias = 0.4
-        rightv = base - search_sign * bias
-        leftv = base + search_sign * bias
-    else:
-        # Wall-following PID adjustment
-        if wall == "right":
-            if right_distance < target:
-                rightv = linear_velocity + abs(angular_velocity)
-                leftv = linear_velocity - abs(angular_velocity)
-            elif right_distance < 2.0:
-                rightv = linear_velocity - abs(angular_velocity)
-                leftv = linear_velocity + abs(angular_velocity)
+        # PID
+        self.SideIntegral += error * self.Timestep
+        self.SideIntegral = max(-self.I_Limit, min(self.SideIntegral, self.I_Limit))
+        d_err = (error - self.SidePrevError) / self.Timestep
+        self.SidePrevError = error
+
+        u = (self.Kp * error) + (self.Ki * self.SideIntegral) + (self.Kd * d_err)
+
+        # limit steering authority
+        cap = max(self.MinApproachRPM, self.ApproachSlope * abs(error))
+        u = math.copysign(min(abs(u), cap), u)
+
+        return saturation(u)
+
+    # ---------- IMU-based rotate (radians; + = left/CCW) ----------
+    def rotate(self, radianAngle, base_rpm=18):
+        self.reset_pids()
+        left_sign  =  1 if radianAngle > 0 else -1
+        right_sign = -left_sign
+
+        def ang_delta(curr, ref):
+            return (curr - ref + math.pi) % (2 * math.pi) - math.pi
+
+        start = bot.get_heading()
+        while True:
+            curr = bot.get_heading()
+            if abs(ang_delta(curr, start)) >= abs(radianAngle):
+                bot.set_left_motor_speed(0)
+                bot.set_right_motor_speed(0)
+                break
+            bot.set_left_motor_speed( left_sign  * base_rpm)
+            bot.set_right_motor_speed(right_sign * base_rpm)
+            time.sleep(self.Timestep)
+
+        self.reset_pids()
+        time.sleep(self.Timestep)
+
+    # ---------- high-level: wall following (returns right_rpm, left_rpm) ----------
+    def wall_follow(self, wall="left"):
+        lidar = bot.get_range_image()
+        if not isinstance(lidar, list) or len(lidar) < 290:
+            return 0.0, 0.0
+
+        left_distance  = safe_distance(min(lidar[90:115]))    # mm
+        right_distance = safe_distance(min(lidar[265:290]))   # mm
+        print("LEFT D:", int(left_distance), "mm")
+        print("RIGHT D:", int(right_distance), "mm")
+
+        target_mm = 400
+
+        linear_velocity  = self.forward_PID(desired_distance_mm=target_mm)
+        angular_velocity = self.side_PID(wall=wall, desired_distance_mm=target_mm)
+
+        rightv = leftv = linear_velocity
+
+        search_sign = +1 if wall == "right" else -1
+        side_distance = right_distance if wall == "right" else left_distance
+
+        if side_distance >= NO_WALL_THRESH:
+            # No wall detected → gentle arc
+            base = 0.6 * linear_velocity
+            bias = 0.4 * bot.max_motor_speed  # fixed bias fraction of max
+            rightv = base - search_sign * bias
+            leftv  = base + search_sign * bias
         else:
-            if left_distance < target:
-                rightv = linear_velocity - abs(angular_velocity)
-                leftv = linear_velocity + abs(angular_velocity)
-            elif left_distance > target and left_distance < 2.0:
-                rightv = linear_velocity + abs(angular_velocity)
-                leftv = linear_velocity - abs(angular_velocity)
+            # Wall-following adjustment (mirrors your reference logic)
+            if wall == "right":
+                if right_distance < target_mm:
+                    rightv = linear_velocity + abs(angular_velocity)
+                    leftv  = linear_velocity - abs(angular_velocity)
+                elif right_distance < 2000:  # 2.0 m in mm
+                    rightv = linear_velocity - abs(angular_velocity)
+                    leftv  = linear_velocity + abs(angular_velocity)
+            else:
+                if left_distance < target_mm:
+                    rightv = linear_velocity - abs(angular_velocity)
+                    leftv  = linear_velocity + abs(angular_velocity)
+                elif target_mm < left_distance < 2000:
+                    rightv = linear_velocity + abs(angular_velocity)
+                    leftv  = linear_velocity - abs(angular_velocity)
 
-    return saturation(rightv), saturation(leftv)
-
+        return saturation(rightv), saturation(leftv)
 
 # ========================
-# Main loop
+# Instantiate controller and sync timestep
+# ========================
+pp = Defintions()
+pp.Timestep = dt  # match the sample's dt in the class as well
+
+# ========================
+# Main loop (kept same flow/style as your reference)
 # ========================
 wall = "left"
 
 while True:
 
     lidar = bot.get_range_image()
-    if lidar is None or len(lidar) < 360:
-        center_idx = len(lidar) // 2
-        print(f"Front distance: {lidar[center_idx]:.3f} m")
+    if isinstance(lidar, list) and len(lidar) >= 360:
+        center_idx = 180  # front center index
+        print(f"Front distance: {safe_distance(lidar[center_idx]):.0f} mm")
     else:
         print("No LiDAR data received")
 
-    rightv, leftv = wall_follow(wall)
+    rightv, leftv = pp.wall_follow(wall)
     bot.set_left_motor_speed(leftv)
     bot.set_right_motor_speed(rightv)
 
-    front_distance = min(lidar[175:185]) / 600  # front
+    # front window for corner handling (mm)
+    if isinstance(lidar, list) and len(lidar) >= 185:
+        front_distance = min(safe_distance(v) for v in lidar[175:185])
+    else:
+        front_distance = SENSOR_MAX_MM
+
     print(front_distance)
     print("-" * 50)
 
-    if front_distance < 0.45 and wall == "right":
-        rotate(-math.pi / 2)
-    elif front_distance < 0.45 and wall == "left":
-        rotate(math.pi / 2)
+    # rotate at ~0.45 m = 450 mm
+    if front_distance < 450 and wall == "right":
+        pp.rotate(-math.pi / 2)
+    elif front_distance < 450 and wall == "left":
+        pp.rotate(math.pi / 2)
 
     time.sleep(dt)
 
