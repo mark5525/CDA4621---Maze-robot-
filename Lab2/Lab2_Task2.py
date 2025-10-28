@@ -132,21 +132,29 @@ if __name__ == "__main__":
         fw = [a for a in scan[175:180] if a and a > 0] if isinstance(scan, list) else []
         forward_distance = min(fw) if fw else float("inf")
 
-        # 1) Base throttle from front PID
-        forward_velocity = pp.side_PID(Bot, wall_follow, d_distance)
+        # --- NEW: base = forward throttle, steer = side correction ---
+        base  = pp.forward_PID(Bot, front_goal)                # forward speed
+        steer = pp.side_PID(Bot, wall_follow, d_distance)      # steering term
 
-        # 4) Close-front override → rotate and continue
+        if wall_follow == "left":
+            left_cmd  = saturation(Bot, base - steer)
+            right_cmd = saturation(Bot, base + steer)
+        else:  # "right"
+            left_cmd  = saturation(Bot, base + steer)
+            right_cmd = saturation(Bot, base - steer)
+
+        # Rotate if front is close
         if forward_distance <= front_goal + pp.StopBand:
             pp.rotate(Bot, direction=("left" if wall_follow == "left" else "right"))
             time.sleep(pp.Timestep)
             continue
 
-        # 5) Send to motors at end of loop
-        Bot.set_left_motor_speed(forward_velocity)
-        Bot.set_right_motor_speed(forward_velocity)
+        # Send to motors at end of loop
+        Bot.set_left_motor_speed(left_cmd)
+        Bot.set_right_motor_speed(right_cmd)
 
-        # 6) Controller timing
         time.sleep(pp.Timestep)
+
 
 
 
