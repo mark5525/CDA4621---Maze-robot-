@@ -124,7 +124,6 @@ if __name__ == "__main__":
     wall_follow = "left"  # or "right"
     d_distance = 300  # side distance goal (mm)
     front_goal = 300  # how close to front wall before rotate (mm)
-    cruise_rpm = 40  # cap forward throttle so steering has authority
     pp = Defintions()
 
     try:
@@ -135,7 +134,6 @@ if __name__ == "__main__":
 
             # 1) Base throttle from front PID
             base = pp.forward_PID(Bot, front_goal)
-            base = math.copysign(min(abs(base), cruise_rpm), base)
 
             # 2) Steering from side PID
             steer = pp.side_PID(Bot, wall_follow, d_distance)
