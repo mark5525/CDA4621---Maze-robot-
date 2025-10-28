@@ -96,15 +96,15 @@ class Defintions:
         # Corner wrap parameters (smooth bias + tamed base during wrap)
         self.WrapDiagClear   = 450    # diag must exceed target + 450 mm
         self.WrapSideRiseMM  = 60     # side increases by ~6 cm
-        self.WrapBiasMax     = 10.0   # smaller = gentler wraps (was 14)
-        self.WrapBiasGain    = 0.02   # rpm per mm of (diag - target) (was 0.03)
-        self.WrapHoldSec     = 0.25   # shorter hold (was 0.35)
+        self.WrapBiasMax     = 10.0   # smaller = gentler wraps
+        self.WrapBiasGain    = 0.02   # rpm per mm of (diag - target)
+        self.WrapHoldSec     = 0.25
         self.wrap_until_ts   = 0.0
         self.prev_side_meas  = 300.0
 
-        self.WrapBaseScale   = 0.50   # stronger tame of base during wrap (was 0.55)
-        self.WrapBaseMax     = 28.0   # lower cap during wrap (was 32)
-        self.WrapBiasLPAlpha = 0.35   # ramp-in for wrap bias
+        self.WrapBaseScale   = 0.50
+        self.WrapBaseMax     = 28.0
+        self.WrapBiasLPAlpha = 0.35
         self.wrap_bias_lp    = 0.0
         self.WrapSteerFrac   = 0.45   # lower steer cap fraction while wrapping
 
@@ -143,11 +143,10 @@ class Defintions:
             if self.start_lock_counter >= self.StartLockFrames:
                 self.start_locked = True
         else:
-            # if we drift out early, keep trying to lock
             if not self.start_locked:
                 self.start_lock_counter = 0
 
-        # --- No-wall persistence -> gentle search arc (avoid tight circles)
+        # --- No-wall persistence -> gentle search arc (toward tracked wall) ---
         if d_side >= NO_WALL_THRESH:
             self.no_wall_count = min(self.no_wall_frames_required, self.no_wall_count + 1)
         else:
@@ -156,11 +155,11 @@ class Defintions:
         if self.no_wall_count >= self.no_wall_frames_required:
             base = 24.0
             bias = 10.0
+            # FIX: for right-wall, turn RIGHT to reacquire; for left-wall, turn LEFT.
             if wall == "left":
-                left = base + bias; right = base - bias
-            else:
                 left = base - bias; right = base + bias
-            # decay steer + ease base toward search base
+            else:  # right wall
+                left = base + bias; right = base - bias
             self.steer_lp = 0.8 * self.steer_lp
             self.prev_side_meas = d_side
             self.prev_base = 0.8 * self.prev_base + 0.2 * base
@@ -195,7 +194,7 @@ class Defintions:
         if not self.start_locked:
             steer_raw += (self.StartPullBiasRPM if wall == "left" else -self.StartPullBiasRPM)
 
-        # Wrap bias with smooth ramp-in & correct direction (gentler limits)
+        # Wrap bias with smooth ramp-in & correct direction
         if wrap_active:
             raw_bias = min(self.WrapBiasMax, self.WrapBiasGain * max(0.0, d_diag - target_mm))
         else:
@@ -203,14 +202,14 @@ class Defintions:
         self.wrap_bias_lp = (1 - self.WrapBiasLPAlpha) * self.wrap_bias_lp + self.WrapBiasLPAlpha * raw_bias
         steer_raw += (self.wrap_bias_lp if wall == "left" else -self.wrap_bias_lp)
 
-        # Low-pass steer to kill residual wiggle
+        # Low-pass steer
         self.steer_lp = (1 - self.SteerLPAlpha) * self.steer_lp + self.SteerLPAlpha * steer_raw
         steer = self.steer_lp
 
         # Desired base from |err|
         desired_base = min(self.BaseMax, max(self.BaseMin, self.BaseGain * abs(err)))
 
-        # Tame base during wrap OR before startup lock (scale + cap), then ramp/slew
+        # Tame base during wrap OR before startup lock
         if wrap_active:
             desired_base = min(self.WrapBaseMax, self.WrapBaseScale * desired_base)
         if not self.start_locked:
@@ -277,9 +276,9 @@ class Defintions:
 # Main loop (simple)
 # ========================
 pp = Defintions()
-wall = "right"         # or "right"
-SIDE_TARGET  = 300    # mm
-FRONT_TARGET = 300    # mm
+wall = "right"         # or "left"
+SIDE_TARGET  = 300     # mm
+FRONT_TARGET = 300     # mm
 
 while True:
     # 1) Wheel speeds come ONLY from side controller
@@ -291,5 +290,6 @@ while True:
     pp.forward_PID(wall=wall, target_mm=FRONT_TARGET)
 
     time.sleep(dt)
+
 
 
