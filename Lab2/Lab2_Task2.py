@@ -132,16 +132,10 @@ if __name__ == "__main__":
         fw = [a for a in scan[175:180] if a and a > 0] if isinstance(scan, list) else []
         forward_distance = min(fw) if fw else float("inf")
 
-        # --- NEW: base = forward throttle, steer = side correction ---
-        base  = pp.forward_PID(Bot, front_goal)                # forward speed
-        steer = pp.side_PID(Bot, wall_follow, d_distance)      # steering term
-
         if wall_follow == "left":
-            left_cmd  = saturation(Bot, base - steer)
-            right_cmd = saturation(Bot, base + steer)
+            f_velocity  =
         else:  # "right"
-            left_cmd  = saturation(Bot, base + steer)
-            right_cmd = saturation(Bot, base - steer)
+            f_velocity =
 
         # Rotate if front is close
         if forward_distance <= front_goal + pp.StopBand:
