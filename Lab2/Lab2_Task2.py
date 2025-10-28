@@ -145,8 +145,8 @@ if __name__ == "__main__":
                 continue
 
             # 5) Send to motors at end of loop
-            Bot.set_left_motor_speed(left_cmd)
-            Bot.set_right_motor_speed(right_cmd)
+            Bot.set_left_motor_speed(forward_velocity)
+            Bot.set_right_motor_speed(forward_velocity)
 
             # 6) Controller timing
             time.sleep(pp.Timestep)
