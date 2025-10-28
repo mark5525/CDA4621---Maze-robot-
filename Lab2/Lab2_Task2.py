@@ -123,7 +123,7 @@ if __name__ == "__main__":
     Bot.max_motor_speed = 60
     wall_follow = "left"  # or "right"
     d_distance = 300  # side distance goal (mm)
-    front_goal = 400  # how close to front wall before rotate (mm)
+    front_goal = 300  # how close to front wall before rotate (mm)
     cruise_rpm = 40  # cap forward throttle so steering has authority
     pp = Defintions()
 
