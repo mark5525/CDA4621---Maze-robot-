@@ -251,7 +251,7 @@ class Defintions:
 # Main loop (simple)
 # ========================
 pp = Defintions()
-wall = "left"         # or "right"
+wall = "right"         # or "right"
 SIDE_TARGET  = 300    # mm
 FRONT_TARGET = 300    # mm
 
