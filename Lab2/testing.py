@@ -1,10 +1,9 @@
 """
-HamBot Wall Following (simplified, mm units)
+HamBot Wall Following (simplified + corner wrap, mm units)
 - Wheel velocities come from side_PID only.
-- forward_PID only checks the front and rotates at 300 mm (immediate).
+- forward_PID rotates at 300 mm (immediate).
+- Corner wrap: anticipates sharp bends and arcs around them smoothly.
 - Max RPM fixed at 60.
-- Fixes: asymmetric steer (gentle when far, stronger when close), robust side read,
-  no-wall persistence, and unconditional front rotate.
 """
 import time
 import math
@@ -57,55 +56,67 @@ def sat(rpm, limit=None):
 
 class Defintions:
     def __init__(self):
-        # --- Side PD (asymmetric) ---
-        self.Kp_side = 1.0    # base proportional (rpm per mm)
-        self.Kd_side = 7.0    # derivative (rpm per (mm/s))
-        self.StopBand = 12.0  # mm deadband around 300 mm
+        # --- Side PD (calmer) ---
+        self.Kp_side = 0.85   # rpm per mm (softer than 1.0)
+        self.Kd_side = 8.5    # rpm per (mm/s) (more damping)
+        self.StopBand = 15.0  # mm deadband around 300 mm
 
-        # Asymmetric scaling: gentler when far (err>0), stronger when close (err<0)
-        self.Kp_far_scale = 0.55   # pull toward wall softly
-        self.Kp_close_scale = 1.20 # push away from wall more decisively
-        self.Kd_far_scale = 0.6
-        self.Kd_close_scale = 1.0
+        # Asymmetric: gentle when far from wall, firmer when close
+        self.Kp_far_scale   = 0.55
+        self.Kp_close_scale = 1.10
+        self.Kd_far_scale   = 0.70
+        self.Kd_close_scale = 1.00
 
-        # --- Speed profile ---
-        self.BaseMin  = 20.0   # rpm
-        self.BaseMax  = 55.0   # rpm
-        self.BaseGain = 0.14   # rpm per mm of |error|
+        # --- Speed profile (brisk but controllable) ---
+        self.BaseMin  = 20.0  # rpm
+        self.BaseMax  = 55.0  # rpm
+        self.BaseGain = 0.14  # rpm per mm of |error|
 
-        # Steering limits
-        self.SteerFrac = 0.55  # |steer| <= 0.55 * base (tamer curvature)
-        self.SteerMax  = 16.0  # absolute steer cap (rpm)
-        self.ForwardFloor = 8.0  # ensure both wheels have forward motion
+        # Steering limits/smoothing
+        self.SteerFrac    = 0.55     # |steer| <= 0.55 * base
+        self.SteerMax     = 16.0     # absolute cap (rpm)
+        self.ForwardFloor = 8.0      # keep both wheels moving forward
+        self.SteerLPAlpha = 0.35     # low-pass on steer (0..1); 0.35 = moderate smoothing
+        self.steer_lp     = 0.0
+
+        # Robust "no wall" persistence
+        self.no_wall_count           = 0
+        self.no_wall_frames_required = 3
+        self.no_wall_clear_frames    = 2
+
+        # Corner wrap parameters
+        self.WrapDiagClear   = 450    # diag must exceed ~0.45 m to consider wrap
+        self.WrapSideRiseMM  = 60     # side must be rising/looser by ~6 cm vs last
+        self.WrapBiasMax     = 14.0   # max extra turn bias rpm
+        self.WrapBiasGain    = 0.03   # rpm per mm of (diag - target)
+        self.WrapHoldSec     = 0.35   # hold bias briefly to carry through the bend
+        self.wrap_until_ts   = 0.0    # timestamp when wrap bias expires
+        self.prev_side_meas  = 300.0  # mm, for rise detection
 
         self.prev_err_side = 0.0
         self.Timestep = dt
 
-        # --- Front rotate: immediate at 300 mm (no gating) ---
-        # (kept minimal to guarantee it triggers)
-
-        # --- No-wall persistence to avoid big circles ---
-        self.no_wall_count           = 0
-        self.no_wall_frames_required = 3   # need 3 frames of "no wall" to arc
-        self.no_wall_clear_frames    = 2   # need 2 frames of wall to clear
-
-    # -------- side PID → wheel velocities --------
+    # -------- side PID → wheel velocities (with corner wrap) --------
     def side_PID(self, wall="left", target_mm=300):
         scan = bot.get_range_image()
         if not isinstance(scan, list) or len(scan) < 300:
-            return 0.0, 0.0  # safe default
+            return 0.0, 0.0
 
-        # Side distance (robust): primary window 85:95, fallback neighbor
+        # Primary side windows
         if wall == "left":
             d_primary  = median_valid_mm(scan[85:95])
             d_fallback = median_valid_mm(scan[95:105])
+            # Forward-diagonal window for wrap detection (~100–120°)
+            d_diag     = median_valid_mm(scan[100:120])
         else:
             d_primary  = median_valid_mm(scan[265:275])
             d_fallback = median_valid_mm(scan[255:265])
+            # Forward-diagonal for right (~240–260°)
+            d_diag     = median_valid_mm(scan[240:260])
 
         d_side = min(d_primary, d_fallback)
 
-        # "No wall" persistence
+        # -------- No-wall persistence → gentle search arc --------
         if d_side >= NO_WALL_THRESH:
             self.no_wall_count = min(self.no_wall_frames_required,
                                      self.no_wall_count + 1)
@@ -113,7 +124,6 @@ class Defintions:
             self.no_wall_count = max(0, self.no_wall_count - self.no_wall_clear_frames)
 
         if self.no_wall_count >= self.no_wall_frames_required:
-            # Gentle search arc (not a tight circle)
             base = 24.0
             bias = 10.0
             if wall == "left":
@@ -122,27 +132,51 @@ class Defintions:
             else:
                 left = base - bias
                 right = base + bias
+            # decay any prior steer bias
+            self.steer_lp = 0.8 * self.steer_lp
+            self.prev_side_meas = d_side
             return sat(left), sat(right)
 
-        # Error relative to 300 mm
-        err = d_side - target_mm
+        # -------- Corner wrap detection --------
+        now = time.time()
+        wrap_bias = 0.0
+        # Heuristic: side opening + diagonal is clearly free (+ margin)
+        side_rising = (d_side - self.prev_side_meas) > self.WrapSideRiseMM
+        diag_clear  = d_diag > (target_mm + self.WrapDiagClear)
+        if (side_rising and diag_clear) or (d_side > target_mm + 80 and diag_clear):
+            # Engage/refresh wrap for a short hold to carry through the bend
+            self.wrap_until_ts = now + self.WrapHoldSec
 
-        # Deadband
+        if now < self.wrap_until_ts:
+            # Bias direction: left turn for left wall, right turn for right wall
+            raw_bias = self.WrapBiasGain * max(0.0, d_diag - target_mm)
+            wrap_bias = min(self.WrapBiasMax, raw_bias)
+            if wall == "right":
+                wrap_bias = -wrap_bias  # mirror direction
+
+        # -------- PD steering on side error (asymmetric gains) --------
+        err = d_side - target_mm
         if abs(err) <= self.StopBand:
             err = 0.0
 
-        # Asymmetric gain scheduling
-        if err > 0:   # too far from the wall → gentle pull
+        if err > 0:   # too far -> gentle pull toward wall
             kp = self.Kp_side * self.Kp_far_scale
             kd = self.Kd_side * self.Kd_far_scale
-        else:         # too close to the wall → stronger push
+        else:         # too close -> firmer push away
             kp = self.Kp_side * self.Kp_close_scale
             kd = self.Kd_side * self.Kd_close_scale
 
-        # PD steering
         derr = (err - self.prev_err_side) / self.Timestep
         self.prev_err_side = err
-        steer = kp * err + kd * derr  # rpm, signed
+
+        steer_raw = kp * err + kd * derr  # signed rpm
+
+        # Add corner wrap bias
+        steer_raw += wrap_bias
+
+        # Low-pass the steer to kill residual wiggle
+        self.steer_lp = (1.0 - self.SteerLPAlpha) * self.steer_lp + self.SteerLPAlpha * steer_raw
+        steer = self.steer_lp
 
         # Base forward speed from |err|
         base = min(self.BaseMax, max(self.BaseMin, self.BaseGain * abs(err)))
@@ -163,9 +197,10 @@ class Defintions:
         left_rpm  = max(left_rpm,  self.ForwardFloor)
         right_rpm = max(right_rpm, self.ForwardFloor)
 
+        self.prev_side_meas = d_side
         return sat(left_rpm), sat(right_rpm)
 
-    # -------- forward "PID": immediate rotate at 300 mm (no gating) --------
+    # -------- forward "PID": immediate rotate at 300 mm --------
     def forward_PID(self, wall="left", target_mm=300):
         scan = bot.get_range_image()
         if not isinstance(scan, list) or len(scan) < 185:
@@ -199,7 +234,7 @@ class Defintions:
         time.sleep(0.05)
 
 # ========================
-# Main loop (kept simple)
+# Main loop (unchanged & simple)
 # ========================
 pp = Defintions()
 wall = "left"         # or "right"
@@ -212,7 +247,7 @@ while True:
     bot.set_left_motor_speed(left_rpm)
     bot.set_right_motor_speed(right_rpm)
 
-    # 2) Front check: rotate immediately at ~300 mm
+    # 2) Front check: rotate at ~300 mm
     pp.forward_PID(wall=wall, target_mm=FRONT_TARGET)
 
     time.sleep(dt)
