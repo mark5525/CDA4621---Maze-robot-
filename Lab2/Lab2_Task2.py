@@ -59,27 +59,43 @@ class Defintions():
         return saturation(bot, u)
 
     def side_PID(self, bot, s_follow, desired_distance):
+        if s_follow not in ("left", "right"):
+            return 0.0  # or raise
+
         scan = bot.get_range_image()
-        window = [a for a in scan[175:180] if a and a > 0]
+        sl = slice(85, 95) if s_follow == "left" else slice(265, 275)
+        window = [a for a in scan[sl] if a and a > 0]
+
         if not window:
+            # optional: also reset integrator to avoid stale windup
+            self.Integral = 0.0
+            self.PrevError = 0.0
+            return 0.0  # or return None if you want caller to detect "no data"
+
+        measured_distance = min(window)
+        error = measured_distance - desired_distance
+
+        if abs(error) <= self.StopBand:
+            self.Integral = 0.0
+            self.PrevError = 0.0
             return 0.0
 
-        sideActual = min(window)
-        error = sideActual - desired_distance
-
-        P = self.Kp * error
-
+        # PID terms
         self.Integral += error * self.Timestep
-        self.Integral = max(min(self.Integral, self.I_Limit), -self.I_Limit)
-        I = self.Ki * self.Integral
+        self.Integral = max(-self.I_Limit, min(self.Integral, self.I_Limit))
+        derivative = (error - self.PrevError) / self.Timestep
+        self.PrevError = error
 
-        self.Derivative = (error - self.PrevError) / self.Timestep
-        D= self.Kd * self.Derivative
+        u = (self.K_p * error) + (self.K_i * self.Integral) + (self.K_d * derivative)
 
-        u = P + I + D
+        # Optional polarity flip for right-following:
+        # if s_follow == "right":
+        #     u = -u
+
+        cap = max(self.MinApproachRPM, self.ApproachSlope * abs(error))
+        u = math.copysign(min(abs(u), cap), u)
 
         return saturation(bot, u)
-
 
     def rotate():
 
@@ -92,18 +108,16 @@ if __name__ == "__main__":
 
     while True:
         forward_distance = min([a for a in Bot.get_range_image()[175:180] if a > 0] or [float("inf")])
-        forward_velocity = pp.side_PID(Bot, wall_follow, d_distance)
-        print("v=", forward_velocity, "dist=", forward_distance)
+
         if wall_follow == "left":
-            Bot.set_left_motor_speed(forward_velocity)
-            Bot.set_right_motor_speed(forward_velocity)
+            forward_velocity = pp.side_PID(Bot, wall_follow, d_distance)
+            print("v=", forward_velocity, "dist=", forward_distance)
         if wall_follow == "right":
-            Bot.set_right_motor_speed(forward_velocity)
-            Bot.set_left_motor_speed(-forward_velocity)
+            forward_velocity = pp.side_PID(Bot, wall_follow, d_distance)
+            print("v=", forward_velocity, "dist=", forward_distance)
 
         if forward_distance != float("inf") and abs(forward_distance - d_distance) <= pp.StopBand:
             pp.rotate()
-            break
 
 
 
