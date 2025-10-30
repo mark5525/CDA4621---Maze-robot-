@@ -1,7 +1,7 @@
 
 """
-HamBot — Task 2 (LEFT wall following only) — Tuned for less side oscillation
-- Only numeric tweaks vs previous version (no logic changes)
+HamBot — Task 2 (LEFT wall following only) — Straighter-line tune
+- Only numeric/index tweaks vs previous version (no logic changes)
 """
 
 import time
@@ -44,25 +44,25 @@ def robust_min(values, keep=5):
 def front_distance(bot):
     scan = bot.get_range_image()
     # Narrow front window centered near 180°
-    return robust_min(scan[175:186], keep=5)  # was keep=3
+    return robust_min(scan[176:185], keep=5)  # slightly tighter center
 
 def left_side_distance(bot):
     scan = bot.get_range_image()
-    # Around 90° ±12°
-    return robust_min(scan[78:103], keep=7)   # was keep=5
+    # Use a narrower window around 90° to reduce angular bias (≈ ±9°)
+    return robust_min(scan[81:99], keep=5)    # was [78:103], keep=7
 
 def left_diag_distance(bot):
     scan = bot.get_range_image()
-    # Around 135° ±8°
-    return robust_min(scan[127:144], keep=5)  # was keep=4
+    # Around 135° ±7°
+    return robust_min(scan[128:143], keep=5)
 
 # ========================
 # Side (left) PID
 # ========================
 
 class SidePID:
-    def __init__(self, kp=0.11, ki=0.01, kd=1.60, dt=0.032, i_limit=250.0):
-        # was kp=0.12, ki=0.02, kd=1.10
+    def __init__(self, kp=0.16, ki=0.008, kd=1.90, dt=0.032, i_limit=250.0):
+        # Stronger P, higher D, smaller I → faster corrections with damping
         self.kp, self.ki, self.kd = kp, ki, kd
         self.dt = dt
         self.i = 0.0
@@ -94,35 +94,36 @@ class LeftWallFollower:
         self.start_time = time.time()
 
         # Speed/RPMs
-        self.cruise_rpm = 20.0           # was 22.0
-        self.rotate_rpm = 28.0
-        self.max_rpm_slew = 2.5          # was 4.0 rpm/tick
+        self.cruise_rpm = 19.0           # slower improves straightness
+        self.rotate_rpm = 30.0           # slightly stronger rotate for crisp 90s
+        self.max_rpm_slew = 2.0          # tighter slew to avoid zig-zag
 
         # Distance thresholds (mm)
         self.target_side_mm   = 300.0
         self.stop_front_mm    = 280.0
-        self.slow_front_mm    = 450.0
-        self.rotate_exit_mm   = 360.0
-        self.reengage_side_mm = 800.0
+        self.slow_front_mm    = 460.0     # tiny bump to start slowing a touch earlier
+        self.rotate_exit_mm   = 370.0
+        self.reengage_side_mm = 750.0
 
-        # Corner wrap
-        self.wrap_start_mm  = 600.0       # was 550.0
-        self.wrap_gain      = 0.006       # was 0.008
-        self.wrap_gain_max  = 0.16        # was 0.22
-        # Startup pull-in (smaller/shorter)
-        self.pull_secs = 0.45             # was 0.6
-        self.pull_mag  = 0.05             # was 0.08
+        # Corner wrap (delay & soften so it doesn't bias straights)
+        self.wrap_start_mm  = 900.0       # was 600/550 → much later
+        self.wrap_gain      = 0.004       # smaller
+        self.wrap_gain_max  = 0.10        # smaller
+
+        # Startup pull-in
+        self.pull_secs = 0.70
+        self.pull_mag  = 0.10
 
         # Steering scaling (PID -> differential rpm)
-        self.steer_to_rpm = 0.28          # was 0.35
+        self.steer_to_rpm = 0.32          # more authority than 0.28 for quicker converge
 
         # "No wall" handling
-        self.NO_WALL_THRESH = 2200.0      # was 2500.0
+        self.NO_WALL_THRESH = 2000.0      # stricter → treat far readings as "no wall" sooner
 
         # State
         self.mode = "follow"            # "follow" or "rotate"
         self.rotate_t0 = None
-        self.rotate_min_time = 0.35
+        self.rotate_min_time = 0.38
         self.rotate_max_time = 1.40
 
         self.pid = SidePID(dt=self.dt)
