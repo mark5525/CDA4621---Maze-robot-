@@ -59,7 +59,7 @@ def left_diag_distance(bot):
 # ========================
 
 class SimplePD:
-    def __init__(self, kp=0.14, kd=1.40, dt=0.032, d_clip=1500.0):
+    def __init__(self, kp=0.14, kd=1.80, dt=0.032, d_clip=1500.0):
         self.kp, self.kd = kp, kd
         self.dt = dt
         self.prev_e = 0.0
@@ -88,8 +88,8 @@ class LeftWallFollower:
         self.cruise_rpm = 20.0
         self.rotate_rpm = 26.0
         self.search_rpm = 18.0
-        self.max_rpm_slew = 2.0
-        self.steer_to_rpm = 0.30
+        self.max_rpm_slew = 1.6
+        self.steer_to_rpm = 0.28
         self.turn_rpm_cap = 9.0
 
         # Distances (mm)
