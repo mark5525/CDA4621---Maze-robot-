@@ -101,7 +101,7 @@ class LeftWallFollower:
         self.NO_WALL_THRESH = 1600.0
 
         # Simple wrap
-        self.wrap_start_mm  = 480.0            # start biasing when side opens beyond this
+        self.wrap_start_mm  = 400.0            # start biasing when side opens beyond this
         self.wrap_k         = 0.007            # proportional gain on (s - wrap_start)
         self.wrap_bias_max  = 0.12             # (pre RPM scaling) cap
         self.wrap_speed_fac = 0.70            # speed multiplier while wrapping
