@@ -1,10 +1,9 @@
 
 """
-HamBot — Task 2 (LEFT wall following) — Simple PD + Simple Wrap
-- Side control: PD with deadband (no integral)
-- Wrap: single proportional bias when side distance exceeds a threshold
-- Rotate on frontal block; Search = gentle forward CCW arc when side is lost
-- Small slew limiting to keep motor commands smooth
+HamBot — Task 2 (LEFT wall following) — Simple PD + Simple Wrap (CW rotate)
+Changes per user:
+- On frontal threshold, rotate **clockwise** (right turn) for LEFT-wall follow.
+- Hug-corner params: wrap_start_mm = 400, wrap_k = 0.009, wrap_speed_fac = 0.60.
 """
 
 import time
@@ -59,7 +58,7 @@ def left_diag_distance(bot):
 # ========================
 
 class SimplePD:
-    def __init__(self, kp=0.14, kd=1.80, dt=0.032, d_clip=1500.0):
+    def __init__(self, kp=0.14, kd=1.40, dt=0.032, d_clip=1500.0):
         self.kp, self.kd = kp, kd
         self.dt = dt
         self.prev_e = 0.0
@@ -88,8 +87,8 @@ class LeftWallFollower:
         self.cruise_rpm = 20.0
         self.rotate_rpm = 26.0
         self.search_rpm = 18.0
-        self.max_rpm_slew = 1.6
-        self.steer_to_rpm = 0.28
+        self.max_rpm_slew = 2.0
+        self.steer_to_rpm = 0.30
         self.turn_rpm_cap = 9.0
 
         # Distances (mm)
@@ -100,11 +99,11 @@ class LeftWallFollower:
         self.rotate_exit_mm = 380.0
         self.NO_WALL_THRESH = 1600.0
 
-        # Simple wrap
-        self.wrap_start_mm  = 400.0            # start biasing when side opens beyond this
-        self.wrap_k         = 0.009           # proportional gain on (s - wrap_start)
-        self.wrap_bias_max  = 0.12             # (pre RPM scaling) cap
-        self.wrap_speed_fac = 0.60           # speed multiplier while wrapping
+        # Simple wrap (user values)
+        self.wrap_start_mm  = 400.0         # start biasing when side opens beyond this
+        self.wrap_k         = 0.009         # proportional gain on (s - wrap_start)
+        self.wrap_bias_max  = 0.12          # (pre RPM scaling) cap
+        self.wrap_speed_fac = 0.60          # speed multiplier while wrapping
 
         # Startup pull-in (small)
         self.pull_secs = 0.60
@@ -131,8 +130,9 @@ class LeftWallFollower:
         a = (f_mm - self.stop_front_mm) / (self.slow_front_mm - self.stop_front_mm)
         return self.cruise_rpm * max(0.0, min(1.0, a))
 
-    def _rotate_ccw(self):
-        return (-self.rotate_rpm, +self.rotate_rpm)
+    def _rotate_cw(self):
+        # CLOCKWISE spin for LEFT-wall follow: left forward, right backward
+        return (+self.rotate_rpm, -self.rotate_rpm)
 
     def step(self):
         f = front_distance(self.bot)
@@ -172,9 +172,7 @@ class LeftWallFollower:
 
         # ============== Commands ==============
         if self.mode == "rotate":
-            l_cmd, r_cmd = self._rotate_ccw()
-            if f > self.stop_front_mm * 0.85:
-                fb = 2.0; l_cmd -= fb; r_cmd -= fb
+            l_cmd, r_cmd = self._rotate_cw()
 
         elif self.mode == "search":
             base = self.search_rpm
@@ -197,7 +195,7 @@ class LeftWallFollower:
             if side_seen and (s > self.wrap_start_mm) and (f > self.stop_front_mm):
                 wrap_bias = self.wrap_k * (s - self.wrap_start_mm)
                 if wrap_bias > self.wrap_bias_max: wrap_bias = self.wrap_bias_max
-                base *= self.wrap_speed_fac  # slow down a bit during wrap
+                base *= self.wrap_speed_fac  # slow down during wrap
 
             steer = steer_pd + wrap_bias   # positive steer = CCW for left follow
             turn = self.steer_to_rpm * steer
@@ -236,3 +234,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         Bot.set_left_motor_speed(0)
         Bot.set_right_motor_speed(0)
+
+
+
