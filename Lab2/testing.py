@@ -122,7 +122,7 @@ class LeftWallFollower:
 
         # Corner wrap — rate-based and small
         self.wrap_ds_trigger  = 70.0        # mm increase in side over dt to start bias
-        self.wrap_gain_rate   = 0.0045      # bias per (mm increase)
+        self.wrap_gain_rate   = 0.0055      # bias per (mm increase)
         self.wrap_bias_max    = 0.10        # cap on added steer (pre RPM scaling)
 
         # Startup pull-in
