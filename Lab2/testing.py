@@ -1,9 +1,11 @@
 
 """
-HamBot — Task 2 (LEFT wall following) — Smooth & Tight Corner Wrap
-- Adds a dedicated WRAP mode to prevent oscillation during cornering.
-- Uses feedforward curvature + reduced speed + gain-scheduled PID inside WRAP.
-- Keeps SEARCH for wall loss and ROTATE for true frontal obstacles.
+HamBot — Task 2 (LEFT wall following) — Smooth & Tight Corner Wrap v2
+Fixes:
+- Prevents "go straight into distance" after corner by keeping a minimum CCW curvature
+  until the new wall is acquired (WRAP mode with min feedforward).
+- Adds a ghost CCW bias when side is temporarily not seen in FOLLOW (before SEARCH kicks in).
+- Earlier wrap detection and earlier "no wall" classification for faster re-acquisition.
 """
 
 import time
@@ -76,21 +78,16 @@ class SidePID:
         self.prev_e = 0.0
         self.d_filt = 0.0
     def step(self, error, scale=1.0):
-        # clamp error to avoid runaway when wall not seen
         if error > 800.0:  error = 800.0
         if error < -800.0: error = -800.0
-        # scale the error (used in WRAP to soften PID)
         error *= scale
-        # integral with leakage
         self.i = (1.0 - self.i_leak)*self.i + error * self.dt
         if self.i >  self.i_limit: self.i =  self.i_limit
         if self.i < -self.i_limit: self.i = -self.i_limit
-        # derivative with EMA filtering
         d_raw = (error - self.prev_e) / self.dt
         self.d_filt = self.d_alpha*d_raw + (1.0 - self.d_alpha)*self.d_filt
         self.prev_e = error
         u = self.kp*error + self.ki*self.i + self.kd*self.d_filt
-        # output limit
         if u >  self.out_limit: u =  self.out_limit
         if u < -self.out_limit: u = -self.out_limit
         return u
@@ -119,22 +116,24 @@ class LeftWallFollower:
         self.slow_front_mm    = 460.0
         self.rotate_exit_mm   = 380.0
         self.reengage_side_mm = 700.0
+        self.diag_capture_mm  = 470.0   # exit WRAP once diagonal sees new wall
 
         # Corner WRAP detection (enter when side opens fast or far)
-        self.wrap_ds_trigger   = 60.0      # mm per step
-        self.wrap_open_mm      = 180.0     # side - target
-        self.wrap_hysteresis   = 40.0      # prevents chatter
+        self.wrap_ds_trigger   = 45.0    # mm per step
+        self.wrap_open_mm      = 130.0   # side - target
+        self.wrap_hysteresis   = 30.0
 
         # WRAP behavior
-        self.wrap_pid_scale    = 0.55      # reduce PID authority to avoid oscillation
-        self.wrap_speed_factor = (0.55, 0.82)  # min..max factor on cruise during wrap
-        self.wrap_ff_k_ds      = 0.0050    # feedforward from ds
-        self.wrap_ff_k_s       = 0.0016    # feedforward from (s - target)
-        self.wrap_ff_k_diag    = 0.0020    # feedforward from diag deficit
-        self.wrap_ff_cap       = 0.12      # max additional steer (pre RPM scaling)
-        self.wrap_ff_alpha     = 0.25      # EMA filter for FF to keep it smooth
-        self.wrap_min_time     = 0.20
-        self.wrap_max_time     = 1.10
+        self.wrap_pid_scale    = 0.52      # reduce PID authority to avoid oscillation
+        self.wrap_speed_factor = (0.45, 0.78)  # min..max factor on cruise during wrap
+        self.wrap_ff_k_ds      = 0.0045    # feedforward from ds
+        self.wrap_ff_k_s       = 0.0012    # feedforward from (s - target)
+        self.wrap_ff_k_diag    = 0.0022    # feedforward from diag deficit
+        self.wrap_ff_cap       = 0.14      # max additional steer (pre RPM scaling)
+        self.wrap_ff_alpha     = 0.28      # EMA filter for FF to keep it smooth
+        self.wrap_min_time     = 0.22
+        self.wrap_max_time     = 0.90
+        self.min_wrap_ff       = 0.060     # MIN CCW feedforward so we never go straight
 
         # Startup pull-in
         self.pull_secs = 0.60
@@ -142,15 +141,16 @@ class LeftWallFollower:
 
         # Steering scaling
         self.steer_to_rpm = 0.30
-        self.turn_rpm_cap = 8.0
+        self.turn_rpm_cap = 9.5
 
         # "No wall" handling
-        self.NO_WALL_THRESH = 2000.0
+        self.NO_WALL_THRESH = 1400.0  # earlier classification of "no side wall"
 
         # Wall-loss search
-        self.lost_side_time = 0.35
+        self.lost_side_time = 0.22
         self.search_turn_rpm = 4.5
         self._lost_since = None
+        self.ghost_turn_rpm = 3.0     # small CCW bias in FOLLOW when side is briefly lost
 
         # State
         self.mode = "follow"                # "follow" | "rotate" | "search" | "wrap"
@@ -192,30 +192,36 @@ class LeftWallFollower:
         if s == float("inf"): return False
         far_open = (s - self.target_side_mm) > (self.wrap_open_mm + self.wrap_hysteresis)
         fast_open = ds > self.wrap_ds_trigger
-        diag_far = d > self.reengage_side_mm  # corridor likely continues
         front_ok = f > self.stop_front_mm
-        return front_ok and (fast_open or far_open or diag_far)
+        return front_ok and (fast_open or far_open)
 
     def _wrap_should_exit(self, s, ds, d, f, now):
         if self.wrap_t0 is None: return True
         t = now - self.wrap_t0
         long_enough = t >= self.wrap_min_time
         too_long = t >= self.wrap_max_time
-        close_enough = (s != float("inf")) and (s - self.target_side_mm) < (self.wrap_open_mm - self.wrap_hysteresis)
-        opening_slow = ds < (0.5 * self.wrap_ds_trigger)
-        diag_ok = d < self.reengage_side_mm
+        diag_captured = d < self.diag_capture_mm and d != float("inf")
+        side_reasonable = (s != float("inf")) and (s - self.target_side_mm) < (self.wrap_open_mm - self.wrap_hysteresis)
+        opening_slow = ds < (0.4 * self.wrap_ds_trigger)
         front_ok = f > self.stop_front_mm
-        return too_long or (long_enough and ( (close_enough and opening_slow) or diag_ok ) and front_ok)
+        return too_long or (long_enough and (diag_captured or (side_reasonable and opening_slow)) and front_ok)
 
     def _wrap_feedforward(self, s, ds, d):
-        if s == float("inf"): return 0.0
-        e = (s - self.target_side_mm)
-        diag_def = max(0.0, d - self.reengage_side_mm)  # positive if diag is far
-        ff_raw = self.wrap_ff_k_ds*max(0.0, ds) + self.wrap_ff_k_s*max(0.0, e) + self.wrap_ff_k_diag*diag_def
+        if s == float("inf"):
+            # If side is unknown during wrap, still keep a minimum CCW bias
+            ff_raw = self.min_wrap_ff
+        else:
+            e = (s - self.target_side_mm)
+            diag_def = max(0.0, d - self.diag_capture_mm)  # positive if diag is far
+            ff_raw = (self.wrap_ff_k_ds*max(0.0, ds) +
+                      self.wrap_ff_k_s*max(0.0, e) +
+                      self.wrap_ff_k_diag*diag_def)
+            if ff_raw < self.min_wrap_ff:
+                ff_raw = self.min_wrap_ff
         # EMA to keep it smooth
         self.ff_ema = self.wrap_ff_alpha*ff_raw + (1.0 - self.wrap_ff_alpha)*self.ff_ema
         if self.ff_ema >  self.wrap_ff_cap: self.ff_ema =  self.wrap_ff_cap
-        if self.ff_ema < 0.0: self.ff_ema = 0.0
+        if self.ff_ema < self.min_wrap_ff: self.ff_ema = self.min_wrap_ff
         return self.ff_ema  # positive → CCW
 
     def step(self):
@@ -246,7 +252,7 @@ class LeftWallFollower:
             elif (self._lost_since is not None) and ((now - self._lost_since) > self.lost_side_time) and (f > self.stop_front_mm):
                 self.mode = "search"
             elif self._wrap_should_enter(s, ds, d, f):
-                self.mode = "wrap"; self.wrap_t0 = now; self.ff_ema = 0.0  # reset FF
+                self.mode = "wrap"; self.wrap_t0 = now; self.ff_ema = self.min_wrap_ff  # reset FF
 
         elif self.mode == "rotate":
             rotating_for = now - (self.rotate_t0 or now)
@@ -262,7 +268,6 @@ class LeftWallFollower:
             if f < self.stop_front_mm:
                 self.mode = "rotate"; self.rotate_t0 = now; self.pid.reset()
             elif side_seen_now:
-                # resume normal follow; wrap logic will catch if still opening
                 self.mode = "follow"
 
         elif self.mode == "wrap":
@@ -283,25 +288,18 @@ class LeftWallFollower:
             r_cmd = base + self.search_turn_rpm
 
         elif self.mode == "wrap":
-            # WRAP mode: reduced speed, FF curvature + softened PID to prevent oscillation
-            # Speed factor based on how far/fast opening is
+            # WRAP: reduced speed, FF curvature + softened PID, with min CCW bias
             e = 0.0 if s == float("inf") else max(0.0, s - self.target_side_mm)
             open_norm = min(1.0, max(e, ds) / (self.wrap_open_mm + 2*self.wrap_ds_trigger))
             speed_fac = self.wrap_speed_factor[0]*(open_norm) + self.wrap_speed_factor[1]*(1.0 - open_norm)
             base = self.cruise_rpm * speed_fac
-
-            # Feedforward curvature
             ff = self._wrap_feedforward(s, ds, d)
-
-            # PID with gain scheduling
             error = 0.0 if not side_seen_now else (s - self.target_side_mm)
             steer_pid = self.pid.step(error, scale=self.wrap_pid_scale)
-
             steer = steer_pid + ff  # positive → CCW
             turn = self.steer_to_rpm * steer
             if turn >  self.turn_rpm_cap: turn =  self.turn_rpm_cap
             if turn < -self.turn_rpm_cap: turn = -self.turn_rpm_cap
-
             l_cmd = base - turn
             r_cmd = base + turn
 
@@ -309,23 +307,23 @@ class LeftWallFollower:
             base = self._front_band_speed(f)
 
             if not side_seen_now:
-                error = 0.0; steer = 0.0
+                # No side: keep a small CCW arc until SEARCH kicks in
+                turn = self.ghost_turn_rpm
+                l_cmd = base - turn
+                r_cmd = base + turn
             else:
                 error = s - self.target_side_mm
                 if abs(error) <= self.deadband_mm: error = 0.0
                 steer = self.pid.step(error)
-
-            # Startup pull-in
-            since_start = now - self.start_time
-            if since_start < self.pull_secs:
-                steer += self.pull_mag * (1.0 - since_start / self.pull_secs)
-
-            turn = self.steer_to_rpm * steer
-            if turn >  self.turn_rpm_cap: turn =  self.turn_rpm_cap
-            if turn < -self.turn_rpm_cap: turn = -self.turn_rpm_cap
-
-            l_cmd = base - turn
-            r_cmd = base + turn
+                # Startup pull-in
+                since_start = now - self.start_time
+                if since_start < self.pull_secs:
+                    steer += self.pull_mag * (1.0 - since_start / self.pull_secs)
+                turn = self.steer_to_rpm * steer
+                if turn >  self.turn_rpm_cap: turn =  self.turn_rpm_cap
+                if turn < -self.turn_rpm_cap: turn = -self.turn_rpm_cap
+                l_cmd = base - turn
+                r_cmd = base + turn
 
         # Slew + saturation
         l_out = saturation(self.bot, self.l_slew.step(l_cmd))
