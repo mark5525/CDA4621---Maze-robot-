@@ -1,22 +1,20 @@
+
 """
-HamBot Task 2 — Wall Following (left/right)
-- Side-distance PID steers (differential RPM), front band slows/rotates.
-- Wrap sharp corners smoothly via side "drop-away" bias.
-- Startup pull-in to avoid initial drift away from the tracked wall.
-- Max RPM fixed at 60. Uses mm units for Lidar distances.
+HamBot — Task 2 (LEFT wall following only)
+- Maintains a target lateral offset to the LEFT wall with a side PID (steer → differential RPM)
+- When a frontal obstacle is detected: rotate in place ~90° CCW, then resume following
+- Wraps corners when the left wall "drops away"
+- Guards against the "spin in place" failure by clamping inputs and time-gating rotate mode
 
 Usage:
-  python Lab2_Task2.py             # defaults to left wall
-  python Lab2_Task2.py right       # follow right wall
+  python Lab2_Task2_Left.py
 """
 
 import time
-import sys
-import math
 from HamBot.src.robot_systems.robot import HamBot
 
 # ========================
-# Utility
+# Basic helpers
 # ========================
 
 def saturation(bot, rpm):
@@ -26,22 +24,19 @@ def saturation(bot, rpm):
     return rpm
 
 class SlewLimiter:
-    """Limits how fast a value can change per timestep (rpm per tick)."""
+    """Limit how fast a command can change per control tick (rpm/tick)."""
     def __init__(self, max_delta_per_tick):
         self.max_delta = float(max_delta_per_tick)
         self.prev = 0.0
     def step(self, target):
-        delta = target - self.prev
-        if   delta >  self.max_delta: delta =  self.max_delta
-        elif delta < -self.max_delta: delta = -self.max_delta
-        self.prev += delta
+        d = target - self.prev
+        if   d >  self.max_delta: d =  self.max_delta
+        elif d < -self.max_delta: d = -self.max_delta
+        self.prev += d
         return self.prev
 
 def robust_min(values, keep=5):
-    """
-    Return a robust min by averaging the 'keep' smallest positive values.
-    Helps reject occasional outliers/spikes.
-    """
+    """Average of the 'keep' smallest positive readings to resist spikes."""
     vals = [v for v in values if v and v > 0]
     if not vals: return float("inf")
     vals.sort()
@@ -49,49 +44,42 @@ def robust_min(values, keep=5):
     return sum(vals[:k]) / k
 
 # ========================
-# Sensing helpers
+# Sensing (angles: 0 back, 90 left, 180 front, 270 right)
 # ========================
 
-def get_front_distance(bot):
-    # Front window ~ 175..180 deg (narrow)
+def front_distance(bot):
     scan = bot.get_range_image()
-    window = scan[175:181]
-    return robust_min(window, keep=3)
+    # Narrow front window centered near 180°
+    return robust_min(scan[175:186], keep=3)
 
-def get_side_distance(bot, side):
-    # Left ~ 90 deg, Right ~ 270 deg; use +/- 12° window
+def left_side_distance(bot):
     scan = bot.get_range_image()
-    if side == "left":
-        window = scan[90-12:90+13]
-    else:
-        window = scan[270-12:270+13]
-    return robust_min(window, keep=5)
+    # Around 90° ±12°
+    return robust_min(scan[78:103], keep=5)
 
-def get_diag_distance(bot, side):
-    # Diagonal forward along the tracked wall: left=135°, right=225°
+def left_diag_distance(bot):
     scan = bot.get_range_image()
-    if side == "left":
-        window = scan[135-8:135+9]
-    else:
-        # wrap-around for indices near 360:
-        a, b = 225-8, 225+9
-        window = scan[a:b]
-    return robust_min(window, keep=4)
+    # Around 135° ±8°
+    return robust_min(scan[127:144], keep=4)
 
 # ========================
-# Controllers
+# Side (left) PID
 # ========================
 
 class SidePID:
-    def __init__(self, kp=0.12, ki=0.02, kd=1.20, dt=0.032, i_limit=250.0):
+    def __init__(self, kp=0.12, ki=0.02, kd=1.10, dt=0.032, i_limit=250.0):
         self.kp, self.ki, self.kd = kp, ki, kd
         self.dt = dt
         self.i = 0.0
         self.prev_e = 0.0
         self.i_limit = abs(i_limit)
-
+    def reset(self):
+        self.i = 0.0
+        self.prev_e = 0.0
     def step(self, error):
-        # PI-D (derivative on measurement via error difference)
+        # clamp error to avoid runaway when wall not seen
+        if error > 800.0:  error = 800.0
+        if error < -800.0: error = -800.0
         self.i += error * self.dt
         if self.i >  self.i_limit: self.i =  self.i_limit
         if self.i < -self.i_limit: self.i = -self.i_limit
@@ -100,150 +88,156 @@ class SidePID:
         return self.kp*error + self.ki*self.i + self.kd*d
 
 # ========================
-# Wall-follow policy
+# Controller
 # ========================
 
-class WallFollower:
-    def __init__(self, bot, side="left"):
+class LeftWallFollower:
+    def __init__(self, bot):
         self.bot = bot
-        self.side = side  # "left" or "right"
-
         # Timing
         self.dt = 0.032
         self.start_time = time.time()
 
-        # Speed config
+        # Speed/RPMs
         self.cruise_rpm = 22.0
         self.rotate_rpm = 28.0
-        self.max_rpm_change_per_tick = 4.0  # slew limiter to avoid surges
+        self.max_rpm_slew = 4.0     # rpm per tick (keeps things smooth)
 
-        # Distances (mm)
-        self.target_side_mm = 300.0
-        self.stop_front_mm = 280.0
-        self.slow_front_mm = 450.0
-        self.rotate_exit_mm = 360.0  # to unlatch rotate
+        # Distance thresholds (mm)
+        self.target_side_mm   = 300.0
+        self.stop_front_mm    = 280.0  # enter rotate if closer than this
+        self.slow_front_mm    = 450.0  # start slowing here
+        self.rotate_exit_mm   = 360.0  # exit rotate when front clears to this
+        self.reengage_side_mm = 800.0  # side seen again after rotate
 
-        # Corner wrap config
-        self.wrap_start_mm = 550.0
-        self.wrap_gain = 0.008
-        self.wrap_gain_max = 0.25   # clamp extra bias
+        # Corner wrap
+        self.wrap_start_mm  = 550.0    # side "drop-away" starts wrap
+        self.wrap_gain      = 0.008    # bias gain when side opens
+        self.wrap_gain_max  = 0.22     # clamp
+        # Startup pull-in (small, so it won't cause spin)
+        self.pull_secs = 0.6
+        self.pull_mag  = 0.08
 
-        # Startup pull-in (gentle nudge toward the tracked wall)
-        self.pull_duration = 0.9    # seconds
-        self.pull_mag = 0.14        # added to steer signal (signed)
+        # Steering scaling (PID -> differential rpm)
+        self.steer_to_rpm = 0.35  # toned down to prevent spiral turns
 
-        # Steering scaling
-        self.steer_to_rpm = 0.55    # converts PID "steer" to differential RPM
+        # "No wall" handling
+        self.NO_WALL_THRESH = 2500.0  # treat as "no side wall" above this
 
         # State
-        self.side_pid = SidePID(dt=self.dt)
-        self.mode = "follow"        # "follow" | "rotate"
-        self.l_slew = SlewLimiter(self.max_rpm_change_per_tick)
-        self.r_slew = SlewLimiter(self.max_rpm_change_per_tick)
+        self.mode = "follow"            # "follow" or "rotate"
+        self.rotate_t0 = None
+        self.rotate_min_time = 0.35     # stay rotating at least this long
+        self.rotate_max_time = 1.40     # bail out if stuck
+
+        self.pid = SidePID(dt=self.dt)
+        self.l_slew = SlewLimiter(self.max_rpm_slew)
+        self.r_slew = SlewLimiter(self.max_rpm_slew)
 
     def _front_band_speed(self, f_mm):
-        if f_mm >= self.slow_front_mm:
-            return self.cruise_rpm
-        if f_mm <= self.stop_front_mm:
-            return 0.0
+        if f_mm <= self.stop_front_mm: return 0.0
+        if f_mm >= self.slow_front_mm: return self.cruise_rpm
         # linear ramp between stop and slow thresholds
-        alpha = (f_mm - self.stop_front_mm) / (self.slow_front_mm - self.stop_front_mm)
-        return self.cruise_rpm * max(0.0, min(1.0, alpha))
+        a = (f_mm - self.stop_front_mm) / (self.slow_front_mm - self.stop_front_mm)
+        return self.cruise_rpm * max(0.0, min(1.0, a))
 
-    def _rotate_vector(self):
-        # Rotate toward the tracked wall (left wall → CCW, right wall → CW)
-        turn = self.rotate_rpm
-        if self.side == "left":
-            return (-turn, +turn)
-        else:
-            return (+turn, -turn)
+    def _rotate_ccw(self):
+        # CCW to face down the new corridor; left wheel backward, right forward
+        return (-self.rotate_rpm, +self.rotate_rpm)
 
     def step(self):
-        f = get_front_distance(self.bot)
-        s = get_side_distance(self.bot, self.side)
-        d = get_diag_distance(self.bot, self.side)
+        f = front_distance(self.bot)
+        s = left_side_distance(self.bot)
+        d = left_diag_distance(self.bot)
+        t = time.time()
 
-        now = time.time()
-        t = now - self.start_time
-
-        # Mode transitions
+        # ================= Mode transitions =================
         if self.mode == "follow":
             if f < self.stop_front_mm:
                 self.mode = "rotate"
-        elif self.mode == "rotate":
-            # exit rotate once front is reasonably clear OR diagonal opens
-            if (f > self.rotate_exit_mm) or (d > self.rotate_exit_mm):
-                self.mode = "follow"
+                self.rotate_t0 = t
+                # Reset PID so we don't carry integral into the turn
+                self.pid.reset()
 
-        # Mode actions
+        elif self.mode == "rotate":
+            # Time-based guards to avoid instant exit / spin forever
+            rotating_for = t - (self.rotate_t0 or t)
+            can_exit = rotating_for >= self.rotate_min_time
+            must_exit = rotating_for >= self.rotate_max_time
+
+            # Conditions to exit rotate:
+            #  - front has cleared OR
+            #  - side wall is seen again (not huge) OR
+            #  - diagonal is reasonably close (we've turned into corridor)
+            front_clear = f > self.rotate_exit_mm
+            side_seen   = s < self.reengage_side_mm
+            diag_seen   = d < self.reengage_side_mm
+
+            if (must_exit or (can_exit and (front_clear or side_seen or diag_seen))):
+                self.mode = "follow"
+                self.rotate_t0 = None
+
+        # ================= Commands =================
         if self.mode == "rotate":
-            l_cmd, r_cmd = self._rotate_vector()
-            # keep a trickle of forward bias if barely blocked to help "peel" past corners
+            l_cmd, r_cmd = self._rotate_ccw()
+
+            # (Optional) give a tiny forward bias if not in a dead stop
             if f > self.stop_front_mm * 0.85:
-                fwd_bias = 4.0
-                if self.side == "left":
-                    l_cmd -= fwd_bias
-                    r_cmd -= fwd_bias
-                else:
-                    l_cmd -= fwd_bias
-                    r_cmd -= fwd_bias
+                fb = 3.0
+                l_cmd -= fb; r_cmd -= fb
+
         else:
             # FOLLOW mode
             base = self._front_band_speed(f)
 
-            # Side error (positive when too far from the wall)
-            e_side = s - self.target_side_mm
-            steer = self.side_pid.step(e_side)
+            # Side error; clamp if "no wall" to avoid runaway turns
+            if s >= self.NO_WALL_THRESH or s == float("inf"):
+                e_side = 0.0  # don't feed garbage to PID
+                steer = 0.0
+            else:
+                e_side = s - self.target_side_mm   # positive = too far from wall
+                steer = self.pid.step(e_side)
 
-            # Startup pull-in (decays to 0)
-            if t < self.pull_duration:
-                pull = self.pull_mag * (1.0 - (t / self.pull_duration))
-                steer += (-pull if self.side == "left" else +pull)
+            # Startup pull-in: small, short-lived nudge toward wall (CCW)
+            since_start = t - self.start_time
+            if since_start < self.pull_secs:
+                steer += self.pull_mag * (1.0 - since_start / self.pull_secs)
 
-            # Corner wrap bias: when the wall drops away, lean into the corner
+            # Corner wrap bias when wall opens up
             if s > self.wrap_start_mm and f > self.stop_front_mm:
                 bias = self.wrap_gain * (s - self.wrap_start_mm)
                 if bias > self.wrap_gain_max: bias = self.wrap_gain_max
-                steer += (-bias if self.side == "left" else +bias)
+                steer += bias  # LEFT follow → positive steer = CCW
 
-            # Convert steer to differential wheel RPMs
+            # Map steer → differential RPM (LEFT forward slower when steer>0)
             turn = self.steer_to_rpm * steer
-            if self.side == "left":
-                l_cmd = base - turn
-                r_cmd = base + turn
-            else:
-                l_cmd = base + turn
-                r_cmd = base - turn
+            l_cmd = base - turn
+            r_cmd = base + turn
 
-        # Slew limit + saturation
+        # Slew + saturation
         l_out = saturation(self.bot, self.l_slew.step(l_cmd))
         r_out = saturation(self.bot, self.r_slew.step(r_cmd))
         return l_out, r_out
 
 # ========================
-# Main
+# Main loop
 # ========================
 
 if __name__ == "__main__":
-    side_follow = "left"
-    if len(sys.argv) >= 2 and sys.argv[1].lower() in ("left", "right"):
-        side_follow = sys.argv[1].lower()
-
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
     dt = 0.032
 
-    follower = WallFollower(Bot, side=side_follow)
+    ctrl = LeftWallFollower(Bot)
 
     try:
         while True:
-            l_rpm, r_rpm = follower.step()
+            l_rpm, r_rpm = ctrl.step()
             Bot.set_left_motor_speed(l_rpm)
             Bot.set_right_motor_speed(r_rpm)
             time.sleep(dt)
     except KeyboardInterrupt:
         Bot.set_left_motor_speed(0)
         Bot.set_right_motor_speed(0)
-
 
 
