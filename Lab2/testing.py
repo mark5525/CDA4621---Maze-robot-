@@ -1,15 +1,11 @@
 
 """
-HamBot — Task 2 (From Scratch, 250/250) — Faster, Tighter Wrap Variant
+HamBot — Task 2 (From Scratch, 250/250) — Faster, Tighter Wrap Variant (EXIT-FIXED)
 
-Changes from previous "FromScratch_250mm" build:
-- **Faster in wrap:** WRAP_SPEED_FAC -> 0.58 (vs 0.45), and a small boost after the first 0.2 s.
-- **Tighter corner hug:** add a curvature term that targets radius R ≈ SIDE_TARGET_MM (250 mm)
-  so the arc stays close even at higher speed. This term scales with base speed so radius is stable.
-- Slightly stronger min turn & cap to allow tighter arc at speed.
-- Keep signed PD small in wrap (it fine-tunes without creating waves).
+- Keeps your faster/tighter wrap and adds clean, early exit with ramp-down.
+- Fixes syntax/indentation errors seen in IDE (stray lines in wrap block).
 
-Tune TRACK_MM if your robot's wheel track differs (default ~120 mm).
+Targets: SIDE = 250 mm, FRONT = 250 mm.
 """
 
 import time, math
@@ -74,12 +70,12 @@ WRAP_TURN_ALPHA  = 0.45
 WRAP_K_OPEN      = 0.0096
 WRAP_K_RATE      = 0.0064
 DIAG_CAPTURE_MM  = 420.0
+
 # ===== Wrap exit/ramp parameters =====
 WRAP_EXIT_BAND_MM  = 30.0   # exit wrap when side <= target + 30 mm
 WRAP_RAMP_RANGE_MM = 120.0  # ramp wrap curvature from far -> near target
 WRAP_DS_EXIT       = -10.0  # if ds < -10 mm/step (closing), allow exit
 WRAP_COOLDOWN_S    = 0.20   # don't re-enter wrap for 0.2s after exit
-
 
 # PD contribution inside wrap (kept modest)
 WRAP_PD_SCALE    = 0.22
@@ -232,7 +228,7 @@ class WallFollower:
             else:
                 open_far  = (s != float('inf')) and ((s - SIDE_TARGET_MM) > WRAP_OPEN_MM)
                 open_fast = ds > WRAP_DS_TRIG
-                cool_ok = (self.last_wrap_exit is None) or ((now - self.last_wrap_exit) > WRAP_COOLDOWN_S)
+                cool_ok   = (self.last_wrap_exit is None) or ((now - self.last_wrap_exit) > WRAP_COOLDOWN_S)
                 if cool_ok and (open_far or open_fast) and f > FRONT_STOP_MM:
                     self.mode = "wrap"; self.t0_wrap = now
                     # initialize wrap turn (feed-forward)
@@ -252,13 +248,15 @@ class WallFollower:
             done_time   = t >= WRAP_MIN_TIME
             too_long    = t >= WRAP_MAX_TIME
             diag_close  = d < DIAG_CAPTURE_MM
-            side_caught = (s != float('inf')) and abs(s - SIDE_TARGET_MM) < 0.6*WRAP_OPEN_MM
+            side_caught = (s != float('inf')) and (s <= SIDE_TARGET_MM + WRAP_EXIT_BAND_MM)
+            closing_ok  = (s != float('inf')) and (ds < WRAP_DS_EXIT)
+
             if f < FRONT_STOP_MM:
-                self.mode = "rotate"; self.t0_rotate = now; self.t0_wrap = None
-        self.last_wrap_exit = None
-            elif too_long or (done_time and (diag_close or side_caught)):
-                self.mode = "follow"; self.t0_wrap = None
-        self.last_wrap_exit = None
+                # front blocked during wrap → rotate now
+                self.mode = "rotate"; self.t0_rotate = now; self.t0_wrap = None; self.turn_hold = 0.0
+            elif too_long or (done_time and (diag_close or side_caught or closing_ok)):
+                # exit wrap early once we have the wall again (or it's closing toward target)
+                self.mode = "follow"; self.last_wrap_exit = now; self.t0_wrap = None; self.turn_hold = 0.0
             else:
                 # Update constant-curvature turn hold
                 new_ff = self._wrap_ff_turn(s, ds, sign)
@@ -268,6 +266,12 @@ class WallFollower:
         if self.mode == "rotate":
             l_cmd, r_cmd = self._rotate_pair()
             l_cmd *= 0.95; r_cmd *= 0.95
+
+        elif self.mode == "search":
+            base = SEARCH_RPM
+            turn = 4.5 * (1 if sign > 0 else -1)
+            l_cmd = base - turn
+            r_cmd = base + turn
 
         else:
             base = self._front_speed(f)
@@ -298,6 +302,7 @@ class WallFollower:
                 else:
                     over = (s - (SIDE_TARGET_MM + WRAP_EXIT_BAND_MM))
                     ramp = max(0.0, min(1.0, over / WRAP_RAMP_RANGE_MM))
+
                 # constant-curvature hold (ramped) + small PD correction
                 turn = ramp*(0.6*turn_radius + 0.4*self.turn_hold) + (STEER_TO_RPM * WRAP_PD_SCALE * steer_pd * (1 if sign > 0 else -1))
             else:
@@ -313,7 +318,9 @@ class WallFollower:
         r_out = saturation(self.bot, self.r_slew.step(r_cmd))
         return l_out, r_out
 
-
+# ========================
+# Rotation utility (tapered ~90°)
+# ========================
 def rotate_90(bot, wall_side):
     target_deg = 90.0
     sign = +1 if wall_side == "left" else -1  # +: CW, -: CCW
@@ -332,7 +339,9 @@ def rotate_90(bot, wall_side):
     bot.set_left_motor_speed(0.0)
     bot.set_right_motor_speed(0.0)
 
-
+# ========================
+# Main
+# ========================
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
