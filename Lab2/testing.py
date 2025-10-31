@@ -1,9 +1,15 @@
 
 """
-HamBot — Task 2 (LEFT wall following) — Simple PD + Simple Wrap (CW rotate)
-Changes per user:
-- On frontal threshold, rotate **clockwise** (right turn) for LEFT-wall follow.
-- Hug-corner params: wrap_start_mm = 400, wrap_k = 0.009, wrap_speed_fac = 0.60.
+HamBot — Task 2 (LEFT wall following) — Simple PD + Simple Wrap (CW rotate, tuned)
+Tuning applied for straighter side tracking:
+- SimplePD: kp=0.10, kd=1.80
+- deadband_mm=14
+- steer_to_rpm=0.26
+- max_rpm_slew=1.6
+- turn_rpm_cap=7.5
+- cruise_rpm=19.0
+- left_side_distance uses a narrower window (84:96) and keep=7 for smoothing
+- (Optional cap) wrap_bias_max=0.10 to reduce tiny nudges on straights
 """
 
 import time
@@ -47,7 +53,8 @@ def front_distance(bot):
 
 def left_side_distance(bot):
     scan = bot.get_range_image()
-    return robust_min(scan[82:98], keep=5)   # ~90° ±8°
+    # Narrower left window and stronger smoothing to reduce jitter
+    return robust_min(scan[84:96], keep=7)   # ~90° ±6°
 
 def left_diag_distance(bot):
     scan = bot.get_range_image()
@@ -58,7 +65,7 @@ def left_diag_distance(bot):
 # ========================
 
 class SimplePD:
-    def __init__(self, kp=0.14, kd=1.40, dt=0.032, d_clip=1500.0):
+    def __init__(self, kp=0.10, kd=1.80, dt=0.032, d_clip=1500.0):
         self.kp, self.kd = kp, kd
         self.dt = dt
         self.prev_e = 0.0
@@ -84,26 +91,26 @@ class LeftWallFollower:
         self.start_time = time.time()
 
         # Speeds
-        self.cruise_rpm = 20.0
+        self.cruise_rpm = 19.0            # was 20.0
         self.rotate_rpm = 26.0
         self.search_rpm = 18.0
-        self.max_rpm_slew = 2.0
-        self.steer_to_rpm = 0.30
-        self.turn_rpm_cap = 9.0
+        self.max_rpm_slew = 1.6           # was 2.0
+        self.steer_to_rpm = 0.26          # was 0.30
+        self.turn_rpm_cap = 7.5           # was 9.0
 
         # Distances (mm)
         self.target_side_mm = 300.0
-        self.deadband_mm    = 10.0
+        self.deadband_mm    = 14.0        # was 10.0
         self.stop_front_mm  = 280.0
         self.slow_front_mm  = 460.0
         self.rotate_exit_mm = 380.0
         self.NO_WALL_THRESH = 1600.0
 
-        # Simple wrap (user values)
-        self.wrap_start_mm  = 400.0         # start biasing when side opens beyond this
-        self.wrap_k         = 0.009         # proportional gain on (s - wrap_start)
-        self.wrap_bias_max  = 0.12          # (pre RPM scaling) cap
-        self.wrap_speed_fac = 0.60          # speed multiplier while wrapping
+        # Simple wrap (kept from your last settings, with slightly tighter cap)
+        self.wrap_start_mm  = 400.0
+        self.wrap_k         = 0.009
+        self.wrap_bias_max  = 0.10        # was 0.12 (optional cap for straights)
+        self.wrap_speed_fac = 0.60
 
         # Startup pull-in (small)
         self.pull_secs = 0.60
@@ -234,6 +241,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         Bot.set_left_motor_speed(0)
         Bot.set_right_motor_speed(0)
-
 
 
