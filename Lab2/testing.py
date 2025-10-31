@@ -1,31 +1,27 @@
-
-"""
-HamBot — Task 2 (LEFT wall following) — SIMPLE + ORBIT on wall loss
-Goals addressed:
-1) Clean 90° CW rotates on frontal block (no overshoot).
-2) Straighter side tracking via calm PD + deadband + small steering authority.
-3) Tight corner wrap by ORBITing a circle whose radius ~= distance from robot center to the (lost) wall.
-
-Key idea (ORBIT mode):
-- When the side wall is lost, immediately drive a constant-curvature CCW arc.
-- The arc radius R is set to the last seen side distance (or target if unknown).
-- For a differential drive with track width W (mm), if we command wheel RPMs:
-    left = V - Δ,  right = V + Δ
-  then the center's path radius is approximately:
-    R ≈ (W * V) / (2 * Δ)
-  Solve for Δ: Δ = (W * V) / (2 * R).
-- This lets us orbit with the robot's **center** as the circle center, radius ~ R to the wall.
-- We exit ORBIT the moment the left wall is seen again (or diagonal indicates the new wall).
-
-Tune TRACK_MM to your robot if the orbit radius looks off.
-"""
-
-import time
 from HamBot.src.robot_systems.robot import HamBot
+import time, math
 
-# ========================
-# Utilities
-# ========================
+dt = 0.032
+previousError = 0
+previousAngleError = 0
+integral = 0
+angleIntegral = 0
+initialX = 2
+initialY = -2
+prevEncoder = 0
+radius = 0
+
+def resetPIDStates():
+    global previousError, integral, previousAngleError, angleIntegral
+    previousError = 0
+    integral = 0
+    previousAngleError = 0
+    angleIntegral = 0
+
+def safeDistance(value, maxRange = 9500):
+    if math.isinf(value) or math.isnan(value):
+        return maxRange
+    return min(value, maxRange)
 
 def saturation(bot, rpm):
     max_rpm = getattr(bot, "max_motor_speed", 60)
@@ -33,263 +29,121 @@ def saturation(bot, rpm):
     if rpm < -max_rpm: return -max_rpm
     return rpm
 
-class SlewLimiter:
-    def __init__(self, max_delta_per_tick):
-        self.max_delta = float(max_delta_per_tick)
-        self.prev = 0.0
-    def step(self, target):
-        d = target - self.prev
-        if   d >  self.max_delta: d =  self.max_delta
-        elif d < -self.max_delta: d = -self.max_delta
-        self.prev += d
-        return self.prev
+def forwardPID(Bot, targetDistance = 300):
+    global previousError, integral
+    kp = 3.0
+    ki= 0
+    kd = 0.15
+    actualDistance = sum([safeDistance(v) for v in Bot.get_range_image()[175:180]]) / 10.0
+    error = actualDistance - targetDistance
+    P = kp * error
+    integral += error * dt
+    I = integral * ki
+    derivative = (error - previousError) / dt
+    D = derivative * kd
+    previousError = error
+    v = P + I + D
+    return saturation(Bot, v)
 
-def robust_min(values, keep=5):
-    vals = [v for v in values if v and v > 0]
-    if not vals: return float("inf")
-    vals.sort()
-    k = min(keep, len(vals))
-    return sum(vals[:k]) / k
+def sidePID(robot, wallSide):
+    global previousAngleError, angleIntegral
+    sideDistance = 300
+    Kp = 5
+    Ki = 0
+    Kd = 8
+    actualLeftDistance = safeDistance(min(Bot.get_range_image()[90:115]))
+    actualRightDistance = safeDistance(min(Bot.get_range_image()[265:290]))
+    print("Left Distance: ", actualLeftDistance)
+    print("Right Distance: ", actualRightDistance)
+    if wallSide == "left" and actualLeftDistance > 2500:
+        return 0.0
+    if wallSide == "right" and actualRightDistance > 2500:
+        return 0.0
+    if wallSide == "right":
+        error = actualRightDistance - sideDistance
+    else:
+        error = actualLeftDistance - sideDistance
+    P = Kp * error
+    angleIntegral += error * dt
+    angleIntegral = max(min(angleIntegral, 1.0), -1.0)
+    I = angleIntegral * Ki
+    derivative = (error - previousAngleError) / dt
+    D = derivative * Kd
+    previousAngleError = error
+    angularVelocity = P + I + D
+    return saturation(Bot, angularVelocity)
 
-# ========================
-# Sensing (0 back, 90 left, 180 front, 270 right)
-# ========================
+def rotate(radianAngle):
+    resetPIDStates()
+    baseSpeed = 1
+    if radianAngle < 0:
+        leftDirection = -1
+        rightDirection = 1
+    else:
+        leftDirection = 1
+        rightDirection = -1
+    initialPosition = Bot.get_heading()
+    while True:
+        currentPos = Bot.get_heading()
+        delta = (currentPos - initialPosition + 540) % 360 - 180
+        if abs(delta) > abs(math.degrees(radianAngle)):
+            Bot.set_left_motor_speed(0)
+            Bot.set_right_motor_speed(0)
+            break
+        Bot.set_left_motor_speed(leftDirection * baseSpeed)
+        Bot.set_right_motor_speed(rightDirection * baseSpeed)
+    resetPIDStates()
 
-def front_distance(bot):
-    scan = bot.get_range_image()
-    return robust_min(scan[176:185], keep=5)
-
-def left_side_distance(bot):
-    scan = bot.get_range_image()
-    # narrow + smoothed to reduce oscillation
-    return robust_min(scan[84:96], keep=7)   # ~90° ±6°
-
-def left_diag_distance(bot):
-    scan = bot.get_range_image()
-    return robust_min(scan[128:142], keep=5) # ~135° ±7°
-
-# ========================
-# Simple PD (no integral)
-# ========================
-
-class SimplePD:
-    def __init__(self, kp=0.08, kd=2.10, dt=0.032, d_clip=1500.0):
-        self.kp, self.kd = kp, kd
-        self.dt = dt
-        self.prev_e = 0.0
-        self.d_clip = abs(d_clip)
-    def reset(self):
-        self.prev_e = 0.0
-    def step(self, e):
-        d = (e - self.prev_e) / self.dt
-        if d >  self.d_clip: d =  self.d_clip
-        if d < -self.d_clip: d = -self.d_clip
-        self.prev_e = e
-        return self.kp*e + self.kd*d
-
-# ========================
-# Controller
-# ========================
-
-class LeftWallFollower:
-    def __init__(self, bot):
-        self.bot = bot
-        self.dt = 0.032
-        self.start_time = time.time()
-
-        # Geometry (approximate track width in mm — tweak if orbit radius looks off)
-        self.TRACK_MM = 120.0
-
-        # Speeds
-        self.cruise_rpm   = 19.0
-        self.rotate_rpm   = 22.0   # gentler CW rotate to reduce overshoot
-        self.orbit_rpm    = 16.0   # base V during ORBIT
-        self.search_rpm   = 18.0
-        self.max_rpm_slew = 1.2    # calm for straighter tracking
-        self.steer_to_rpm = 0.22   # less steering authority to avoid wag
-        self.turn_rpm_cap = 6.5    # hard cap on differential
-
-        # Distances (mm)
-        self.target_side_mm = 300.0
-        self.deadband_mm    = 16.0
-        self.stop_front_mm  = 280.0
-        self.slow_front_mm  = 460.0
-        self.rotate_exit_mm = 340.0
-        self.NO_WALL_THRESH = 1600.0
-        self.diag_capture_mm = 480.0   # ~sqrt(2)*300 for new corridor capture
-
-        # Wrap (kept minimal since ORBIT handles corners tightly)
-        self.wrap_start_mm  = 380.0
-        self.wrap_k         = 0.0105
-        self.wrap_bias_max  = 0.12
-        self.wrap_speed_fac = 0.55
-
-        # Startup pull-in (small)
-        self.pull_secs = 0.60
-        self.pull_mag  = 0.08
-
-        # State / timers
-        self.mode = "follow"  # "follow" | "rotate" | "orbit" | "search"
-        self.rotate_t0 = None
-        self.rotate_min_time = 0.28
-        self.rotate_max_time = 0.90
-
-        self.orbit_t0 = None
-        self.orbit_max_time = 1.40   # safety limit
-        self.orbit_R = None          # planned radius (mm), set on entry
-
-        self.lost_side_time = 0.20   # fallback to search if orbit can't reacquire
-        self._lost_since = None
-
-        # Control & smoothing
-        self.pd = SimplePD(dt=self.dt)
-        self.l_slew = SlewLimiter(self.max_rpm_slew)
-        self.r_slew = SlewLimiter(self.max_rpm_slew)
-
-        # Last good side distance (used for orbit radius when side is lost)
-        self.last_side_seen_mm = self.target_side_mm
-
-    def _front_band_speed(self, f_mm):
-        if f_mm <= self.stop_front_mm: return 0.0
-        if f_mm >= self.slow_front_mm: return self.cruise_rpm
-        a = (f_mm - self.stop_front_mm) / (self.slow_front_mm - self.stop_front_mm)
-        return self.cruise_rpm * max(0.0, min(1.0, a))
-
-    def _rotate_cw(self):
-        # CLOCKWISE spin for LEFT-wall follow: left forward, right backward
-        return (+self.rotate_rpm, -self.rotate_rpm)
-
-    def _enter_orbit(self, now):
-        # Choose orbit radius from last seen side distance, clamp reasonable bounds
-        R = self.last_side_seen_mm if self.last_side_seen_mm else self.target_side_mm
-        if R < 220.0: R = 220.0
-        if R > 700.0: R = 700.0
-        self.orbit_R = R
-        self.orbit_t0 = now
-        self.mode = "orbit"
-
-    def step(self):
-        f = front_distance(self.bot)
-        s = left_side_distance(self.bot)
-        d = left_diag_distance(self.bot)
-        now = time.time()
-
-        # Side visibility bookkeeping
-        side_seen = (s != float("inf")) and (s < self.NO_WALL_THRESH)
-        if side_seen:
-            self.last_side_seen_mm = s
-            self._lost_since = None
+def wallFollow(wallSide):
+    leftDistance = safeDistance(min(Bot.get_range_image()[90:115]))
+    rightDistance = safeDistance(min(Bot.get_range_image()[265:290]))
+    targetDistance = 300
+    linearVelocity = forwardPID(Bot, targetDistance)
+    angularVelocity = sidePID(Bot, wallSide)
+    rightV = leftV = linearVelocity
+    if wallSide == "right":
+        sideDistance = rightDistance
+        searchSign = +1
+    else:
+        sideDistance = leftDistance
+        searchSign = -1
+    if sideDistance >= 2500:
+        base = 0.6 * linearVelocity
+        bias = 0.4
+        rightV = base - searchSign * bias
+        leftV = base + searchSign * bias
+    else:
+        if wallSide == "right":
+            rightV = linearVelocity + abs(angularVelocity)
+            leftV = linearVelocity - abs(angularVelocity)
+        elif rightDistance > targetDistance and rightDistance < 2000:
+            rightV = linearVelocity - abs(angularVelocity)
+            leftV = linearVelocity + abs(angularVelocity)
         else:
-            if self._lost_since is None:
-                self._lost_since = now
-
-        # ============== Mode transitions ==============
-        if self.mode == "follow":
-            if f < self.stop_front_mm:
-                self.mode = "rotate"; self.rotate_t0 = now; self.pd.reset()
-            elif not side_seen:
-                # Immediately orbit when side is lost (tight wrap idea)
-                self._enter_orbit(now)
-
-        elif self.mode == "rotate":
-            rotating_for = now - (self.rotate_t0 or now)
-            can_exit = rotating_for >= self.rotate_min_time
-            must_exit = rotating_for >= self.rotate_max_time
-            front_clear = f > self.rotate_exit_mm
-            diag_close  = d < self.diag_capture_mm
-            if must_exit or (can_exit and (front_clear or side_seen or diag_close)):
-                self.mode = "follow"; self.rotate_t0 = None
-
-        elif self.mode == "orbit":
-            # Exit orbit when we reacquire the wall, diagonal is close, or timeout/safety
-            orbiting_for = now - (self.orbit_t0 or now)
-            if f < self.stop_front_mm:
-                self.mode = "rotate"; self.rotate_t0 = now; self.pd.reset()
-            elif side_seen or (d < self.diag_capture_mm) or (orbiting_for > self.orbit_max_time):
-                self.mode = "follow"; self.orbit_t0 = None; self.orbit_R = None
-            elif (self._lost_since is not None) and ((now - self._lost_since) > self.lost_side_time + 0.5):
-                # Fallback if orbit isn't reacquiring
-                self.mode = "search"
-
-        elif self.mode == "search":
-            if f < self.stop_front_mm:
-                self.mode = "rotate"; self.rotate_t0 = now; self.pd.reset()
-            elif side_seen:
-                self.mode = "follow"; self._lost_since = None
-
-        # ============== Commands ==============
-        if self.mode == "rotate":
-            l_cmd, r_cmd = self._rotate_cw()
-
-        elif self.mode == "search":
-            base = self.search_rpm
-            l_cmd = base - 4.5   # gentle CCW arc
-            r_cmd = base + 4.5
-
-        elif self.mode == "orbit":
-            # Constant-curvature CCW arc with radius ~ orbit_R
-            V = self.orbit_rpm
-            R = self.orbit_R if self.orbit_R else self.target_side_mm
-            delta = (self.TRACK_MM * V) / (2.0 * R)  # RPM "turn" to achieve curvature
-            # Cap delta to protect motors
-            if delta >  self.turn_rpm_cap: delta =  self.turn_rpm_cap
-            if delta < -self.turn_rpm_cap: delta = -self.turn_rpm_cap
-            l_cmd = V - delta
-            r_cmd = V + delta
-
-        else:  # follow
-            base = self._front_band_speed(f)
-
-            # PD on side error (with deadband)
-            if not side_seen:
-                steer_pd = 0.0
-            else:
-                e = s - self.target_side_mm
-                if abs(e) <= self.deadband_mm: e = 0.0
-                steer_pd = self.pd.step(e)
-
-            # Minimal wrap bias (kept small since orbit handles corners)
-            wrap_bias = 0.0
-            if side_seen and (s > self.wrap_start_mm) and (f > self.stop_front_mm):
-                wrap_bias = self.wrap_k * (s - self.wrap_start_mm)
-                if wrap_bias > self.wrap_bias_max: wrap_bias = self.wrap_bias_max
-                base *= self.wrap_speed_fac
-
-            steer = steer_pd + wrap_bias   # positive → CCW for left follow
-            turn = self.steer_to_rpm * steer
-            if turn >  self.turn_rpm_cap: turn =  self.turn_rpm_cap
-            if turn < -self.turn_rpm_cap: turn = -self.turn_rpm_cap
-
-            # Startup pull-in
-            since_start = now - self.start_time
-            if since_start < self.pull_secs:
-                turn += self.steer_to_rpm * self.pull_mag * (1.0 - since_start / self.pull_secs)
-
-            l_cmd = base - turn
-            r_cmd = base + turn
-
-        # Slew + saturation
-        l_out = saturation(self.bot, self.l_slew.step(l_cmd))
-        r_out = saturation(self.bot, self.r_slew.step(r_cmd))
-        return l_out, r_out
-
-# ========================
-# Main
-# ========================
+            if leftDistance < targetDistance:
+                rightV = linearVelocity - abs(angularVelocity)
+                leftV = linearVelocity + abs(angularVelocity)
+            elif leftDistance > targetDistance and leftDistance < 2000:
+                rightV = linearVelocity + abs(angularVelocity)
+                leftV = linearVelocity - abs(angularVelocity)
+    rightV = saturation(Bot, rightV)
+    leftV = saturation(Bot, leftV)
+    return rightV, leftV
 
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
-    dt = 0.032
+    wallSide = "left"
 
-    ctrl = LeftWallFollower(Bot)
+    while True:
+        rightV, leftV = wallFollow(wallSide)
+        Bot.set_left_motor_speed(leftV)
+        Bot.set_right_motor_speed(rightV)
+        frontDistance = safeDistance(min(Bot.get_range_image()[175:185]))
+        print("Front Distance: ", frontDistance)
+        print("-" * 50)
+        if frontDistance < 300 and wallSide == "right":
+            rotate(-math.pi / 2)
+        elif frontDistance < 300 and wallSide == "left":
+            rotate(math.pi / 2)
 
-    try:
-        while True:
-            l_rpm, r_rpm = ctrl.step()
-            Bot.set_left_motor_speed(l_rpm)
-            Bot.set_right_motor_speed(r_rpm)
-            time.sleep(dt)
-    except KeyboardInterrupt:
-        Bot.set_left_motor_speed(0)
-        Bot.set_right_motor_speed(0)
