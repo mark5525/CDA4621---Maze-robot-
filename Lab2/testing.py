@@ -15,8 +15,8 @@ from HamBot.src.robot_systems.robot import HamBot
 # Timing & Targets
 # ========================
 DT = 0.032
-SIDE_TARGET_MM  = 160.0
-FRONT_TARGET_MM = 160.0
+SIDE_TARGET_MM  = 250.0
+FRONT_TARGET_MM = 250.0
 
 # ========================
 # Geometry (wheel track) — tune for your bot if needed
@@ -30,7 +30,7 @@ CRUISE_RPM         = 18.0
 SEARCH_RPM         = 16.0
 ROTATE_RPM         = 22.0
 ROTATE_MIN_RPM     = 6.0
-TURN_CAP_RPM       = 9.0       # allow tighter differential for faster wraps
+TURN_CAP_RPM       = 10.5       # allow tighter differential for faster wraps
 STEER_TO_RPM       = 0.24
 SLEW_RPM_PER_TICK  = 1.4
 
@@ -57,25 +57,27 @@ NO_WALL_MM = 2000.0
 # ========================
 # Corner wrap (faster & tighter)
 # ========================
-WRAP_OPEN_MM     = 90.0
-WRAP_DS_TRIG     = 35.0
+WRAP_OPEN_MM     = 80.0
+WRAP_DS_TRIG     = 30.0
 WRAP_MIN_TIME    = 0.12
 WRAP_MAX_TIME    = 0.80
-WRAP_SPEED_FAC   = 0.58         # faster during wrap
-WRAP_SPEED_BOOST = 1.15         # mild boost after entry
-WRAP_BOOST_T     = 0.20         # apply boost after this many seconds in wrap
+WRAP_SPEED_FAC   = 0.64         # faster during wrap
+WRAP_SPEED_BOOST = 1.22         # mild boost after entry
+WRAP_BOOST_T     = 0.12         # apply boost after this many seconds in wrap
 
-WRAP_MIN_TURN    = 4.4          # stronger minimum turn toward wall
-WRAP_TURN_ALPHA  = 0.45
-WRAP_K_OPEN      = 0.0096
-WRAP_K_RATE      = 0.0064
+WRAP_MIN_TURN    = 5.2          # stronger minimum turn toward wall
+WRAP_TURN_ALPHA  = 0.55
+WRAP_K_OPEN      = 0.0105
+WRAP_K_RATE      = 0.0070
 DIAG_CAPTURE_MM  = 420.0
 
 # ===== Wrap exit/ramp parameters =====
 WRAP_EXIT_BAND_MM  = 30.0   # exit wrap when side <= target + 30 mm
-WRAP_RAMP_RANGE_MM = 120.0  # ramp wrap curvature from far -> near target
+WRAP_RAMP_RANGE_MM = 180.0  # ramp wrap curvature from far -> near target
 WRAP_DS_EXIT       = -10.0  # if ds < -10 mm/step (closing), allow exit
 WRAP_COOLDOWN_S    = 0.20   # don't re-enter wrap for 0.2s after exit
+
+WRAP_R_TARGET_MM = 220.0  # aim to hug corner a little tighter than side target
 
 # PD contribution inside wrap (kept modest)
 WRAP_PD_SCALE    = 0.22
@@ -294,7 +296,7 @@ class WallFollower:
                     base *= WRAP_SPEED_BOOST
 
                 # curvature to target ~250 mm radius (scales with speed)
-                turn_radius = self._radius_turn(base, sign, R_mm=SIDE_TARGET_MM)
+                turn_radius = self._radius_turn(base, sign, R_mm=WRAP_R_TARGET_MM)
 
                 # Ramp factor: as side approaches target, fade out wrap turn
                 if s == float('inf'):
@@ -304,7 +306,7 @@ class WallFollower:
                     ramp = max(0.0, min(1.0, over / WRAP_RAMP_RANGE_MM))
 
                 # constant-curvature hold (ramped) + small PD correction
-                turn = ramp*(0.6*turn_radius + 0.4*self.turn_hold) + (STEER_TO_RPM * WRAP_PD_SCALE * steer_pd * (1 if sign > 0 else -1))
+                turn = ramp*(0.8*turn_radius + 0.2*self.turn_hold) + (STEER_TO_RPM * WRAP_PD_SCALE * steer_pd * (1 if sign > 0 else -1))
             else:
                 turn = STEER_TO_RPM * steer_pd * (1 if sign > 0 else -1)
 
