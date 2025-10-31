@@ -1,14 +1,11 @@
 
 """
-HamBot — Task 2 (250/250) — Wrap-Hug TUNE (values-only + tiny right bias)
-Base: wrapBoost_exitFix_FIXED (structure unchanged)
+HamBot — Task 2 (From Scratch, 250/250) — Faster, Tighter Wrap Variant (EXIT-FIXED)
 
-What changed:
-- Earlier wrap entry
-- Stronger, faster curvature during wrap (tighter arc)
-- Slightly faster wrap speed
-- Keep curvature a bit longer, still exit cleanly
-- Tiny right-wall curvature boost to match left performance
+- Keeps your faster/tighter wrap and adds clean, early exit with ramp-down.
+- Fixes syntax/indentation errors seen in IDE (stray lines in wrap block).
+
+Targets: SIDE = 250 mm, FRONT = 250 mm.
 """
 
 import time, math
@@ -22,9 +19,9 @@ SIDE_TARGET_MM  = 250.0
 FRONT_TARGET_MM = 250.0
 
 # ========================
-# Geometry (wheel track)
+# Geometry (wheel track) — tune for your bot if needed
 # ========================
-TRACK_MM = 120.0
+TRACK_MM = 120.0   # distance between wheel contact points (mm)
 
 # ========================
 # Speeds / limits
@@ -33,7 +30,7 @@ CRUISE_RPM         = 18.0
 SEARCH_RPM         = 16.0
 ROTATE_RPM         = 22.0
 ROTATE_MIN_RPM     = 6.0
-TURN_CAP_RPM       = 11.0      # ↑ allow tighter differential
+TURN_CAP_RPM       = 11.0       # allow tighter differential for faster wraps
 STEER_TO_RPM       = 0.24
 SLEW_RPM_PER_TICK  = 1.4
 
@@ -58,33 +55,32 @@ EMA_ALPHA = 0.30
 NO_WALL_MM = 2000.0
 
 # ========================
-# Corner wrap (tighter & earlier)
+# Corner wrap (faster & tighter)
 # ========================
-WRAP_OPEN_MM     = 78.0    # ↓ earlier than before
-WRAP_DS_TRIG     = 26.0    # ↓ earlier on opening rate
+WRAP_OPEN_MM     = 80.0
+WRAP_DS_TRIG     = 30.0
 WRAP_MIN_TIME    = 0.12
 WRAP_MAX_TIME    = 0.80
-WRAP_SPEED_FAC   = 0.62    # ↑ a bit faster during wrap
-WRAP_SPEED_BOOST = 1.18    # mild boost after entry
-WRAP_BOOST_T     = 0.16
+WRAP_SPEED_FAC   = 0.64         # faster during wrap
+WRAP_SPEED_BOOST = 1.22         # mild boost after entry
+WRAP_BOOST_T     = 0.12         # apply boost after this many seconds in wrap
 
-WRAP_MIN_TURN    = 5.6     # ↑ stronger min turn toward wall
-WRAP_TURN_ALPHA  = 0.50    # ↑ faster adaptation
-WRAP_K_OPEN      = 0.0102  # ↑ curvature from opening
-WRAP_K_RATE      = 0.0068  # ↑ curvature from rate
+WRAP_MIN_TURN    = 5.2          # stronger minimum turn toward wall
+WRAP_TURN_ALPHA  = 0.55
+WRAP_K_OPEN      = 0.0105
+WRAP_K_RATE      = 0.0070
 DIAG_CAPTURE_MM  = 420.0
 
-# ===== Wrap exit/ramp parameters (unchanged behavior, slightly longer ramp) =====
-WRAP_EXIT_BAND_MM  = 30.0
-WRAP_RAMP_RANGE_MM = 160.0  # ↑ keep curvature a bit longer before fully handing off
-WRAP_DS_EXIT       = -10.0
-WRAP_COOLDOWN_S    = 0.20
+# ===== Wrap exit/ramp parameters =====
+WRAP_EXIT_BAND_MM  = 30.0   # exit wrap when side <= target + 30 mm
+WRAP_RAMP_RANGE_MM = 180.0  # ramp wrap curvature from far -> near target
+WRAP_DS_EXIT       = -10.0  # if ds < -10 mm/step (closing), allow exit
+WRAP_COOLDOWN_S    = 0.20   # don't re-enter wrap for 0.2s after exit
 
-# PD contribution inside wrap
-WRAP_PD_SCALE    = 0.24
+WRAP_R_TARGET_MM = 200.0  # aim to hug corner a little tighter than side target
 
-# Small right-wall boost to match left performance
-WRAP_SIDE_BIAS_RIGHT = 1.08
+# PD contribution inside wrap (kept modest)
+WRAP_PD_SCALE    = 0.22
 
 # ========================
 # Helpers
@@ -150,7 +146,7 @@ class WallFollower:
         self.t0_rotate = None
         self.lost_since = None
 
-        self.turn_hold = 0.0
+        self.turn_hold = 0.0   # constant-curvature component during wrap
 
         self.l_slew = Slew(SLEW_RPM_PER_TICK)
         self.r_slew = Slew(SLEW_RPM_PER_TICK)
@@ -188,14 +184,15 @@ class WallFollower:
         return turn
 
     def _radius_turn(self, base_rpm, sign, R_mm=None):
-        """ΔRPM needed for center radius R: Δ = (TRACK*V)/(2*R)."""
+        """Turn needed (RPM) to achieve radius R for the robot center: R = (TRACK * V) / (2*Δ) ⇒ Δ = (TRACK*V)/(2*R)."""
         if R_mm is None: R_mm = SIDE_TARGET_MM
-        R_mm = max(180.0, R_mm)
-        delta = (TRACK_MM * base_rpm) / (2.0 * R_mm)
+        R_mm = max(180.0, R_mm)  # avoid singular/too-tight
+        delta = (TRACK_MM * base_rpm) / (2.0 * R_mm)  # RPM
         turn = delta * (1 if sign > 0 else -1)
-        # cap and min-turn
+        # cap
         if turn >  TURN_CAP_RPM: turn =  TURN_CAP_RPM
         if turn < -TURN_CAP_RPM: turn = -TURN_CAP_RPM
+        # ensure minimum toward wall
         min_signed = WRAP_MIN_TURN * (1 if sign > 0 else -1)
         if sign > 0 and turn < min_signed: turn = min_signed
         if sign < 0 and turn > -min_signed: turn = -min_signed
@@ -208,18 +205,19 @@ class WallFollower:
         sign = +1 if self.side == "left" else -1
         side_seen = s_raw < NO_WALL_MM
 
-        # EMA side
+        # EMA for side distance
         if s_raw != float('inf'):
             if self.side_ema is None: self.side_ema = s_raw
             else: self.side_ema = EMA_ALPHA*s_raw + (1.0-EMA_ALPHA)*self.side_ema
         s = self.side_ema if self.side_ema is not None else s_raw
 
-        # ds
+        # opening rate
         ds = 0.0
         if self.prev_side is not None and s != float('inf'):
             ds = s - self.prev_side
         self.prev_side = s if s != float('inf') else self.prev_side
 
+        # lost wall timer
         now = time.time()
         if side_seen: self.lost_since = None
         else:
@@ -235,6 +233,7 @@ class WallFollower:
                 cool_ok   = (self.last_wrap_exit is None) or ((now - self.last_wrap_exit) > WRAP_COOLDOWN_S)
                 if cool_ok and (open_far or open_fast) and f > FRONT_STOP_MM:
                     self.mode = "wrap"; self.t0_wrap = now
+                    # initialize wrap turn (feed-forward)
                     self.turn_hold = self._wrap_ff_turn(s, ds, sign)
 
         elif self.mode == "rotate":
@@ -255,10 +254,13 @@ class WallFollower:
             closing_ok  = (s != float('inf')) and (ds < WRAP_DS_EXIT)
 
             if f < FRONT_STOP_MM:
+                # front blocked during wrap → rotate now
                 self.mode = "rotate"; self.t0_rotate = now; self.t0_wrap = None; self.turn_hold = 0.0
             elif too_long or (done_time and (diag_close or side_caught or closing_ok)):
+                # exit wrap early once we have the wall again (or it's closing toward target)
                 self.mode = "follow"; self.last_wrap_exit = now; self.t0_wrap = None; self.turn_hold = 0.0
             else:
+                # Update constant-curvature turn hold
                 new_ff = self._wrap_ff_turn(s, ds, sign)
                 self.turn_hold = (1.0 - WRAP_TURN_ALPHA)*self.turn_hold + WRAP_TURN_ALPHA*new_ff
 
@@ -288,28 +290,27 @@ class WallFollower:
                 steer_pd = 0.0
 
             if self.mode == "wrap":
+                # faster wrap base speed
                 base *= WRAP_SPEED_FAC
                 if (time.time() - (self.t0_wrap or time.time())) > WRAP_BOOST_T:
                     base *= WRAP_SPEED_BOOST
 
-                # Speed-scaled curvature toward the wall + a bit of PD
-                turn_radius = self._radius_turn(base, sign, R_mm=SIDE_TARGET_MM)
+                # curvature to target ~250 mm radius (scales with speed)
+                turn_radius = self._radius_turn(base, sign, R_mm=WRAP_R_TARGET_MM)
 
-                # Ramp factor: fade out wrap turn as we approach target
+                # Ramp factor: as side approaches target, fade out wrap turn
                 if s == float('inf'):
                     ramp = 1.0
                 else:
                     over = (s - (SIDE_TARGET_MM + WRAP_EXIT_BAND_MM))
                     ramp = max(0.0, min(1.0, over / WRAP_RAMP_RANGE_MM))
 
-                turn = ramp*(0.6*turn_radius + 0.4*self.turn_hold) + (STEER_TO_RPM * WRAP_PD_SCALE * steer_pd * (1 if sign > 0 else -1))
-
-                # Right-wall tiny boost so it doesn't go straight on some corners
-                if sign < 0:
-                    turn *= WRAP_SIDE_BIAS_RIGHT
+                # constant-curvature hold (ramped) + small PD correction
+                turn = ramp*(0.8*turn_radius + 0.2*self.turn_hold) + (STEER_TO_RPM * WRAP_PD_SCALE * steer_pd * (1 if sign > 0 else -1))
             else:
                 turn = STEER_TO_RPM * steer_pd * (1 if sign > 0 else -1)
 
+            # clamp and map to wheels
             if turn >  TURN_CAP_RPM: turn =  TURN_CAP_RPM
             if turn < -TURN_CAP_RPM: turn = -TURN_CAP_RPM
             l_cmd = base - turn
