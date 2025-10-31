@@ -1,14 +1,16 @@
 
 """
-HamBot — Task 2 (Wall Following) — Smooth Corner Wrap (constant-curvature hold)
+HamBot — Task 2 (Wall Following) — SmoothWrapHold **SNAP** (earlier, tighter wrap)
 
-Fix for "wavy straight line after first turn into corner":
-- On WRAP entry, compute a CCW/CW curvature (turn RPM) from side opening and its rate.
-- Hold that curvature with an EMA ("turn hold") and enforce a MIN turn toward the wall.
-- During WRAP, side PD is heavily downscaled (or zeroed) so it doesn't fight the wrap.
-- Exit WRAP only after diagonal capture or side is back near target and opening has slowed.
+Problem fixed: "wrap takes too long; drifts far and loops back"
+Approach:
+- **Earlier wrap entry** (lower thresholds on opening & rate).
+- **Snap decel** for first ~0.2s of wrap (bigger slowdown right at entry).
+- **Stronger initial curvature** with faster turn-hold convergence (EMA alpha↑).
+- **Higher min-turn** and **slightly higher turn cap** so the arc tightens fast.
+- **Shorter wrap window** so it can’t wander long before reacquiring.
 
-Use: set wallSide = "left" or "right".
+Flip `wallSide` to "right" to follow the right wall.
 """
 
 import time, math
@@ -26,7 +28,7 @@ SEARCH_RPM       = 16.0
 ROT_RPM          = 22.0
 ROT_MIN_RPM      = 6.0
 STEER_TO_RPM     = 0.24
-TURN_CAP_RPM     = 8.0
+TURN_CAP_RPM     = 9.0          # ↑ was 7.0/8.0; allow tighter arc
 SLEW_RPM_PER_TIK = 1.4
 
 # Front thresholds
@@ -42,20 +44,24 @@ D_CLIP = 1500.0
 # Side smoothing
 EMA_ALPHA        = 0.28
 
-# Corner wrap detection
-WRAP_OPEN_MM     = 100.0        # side - target
-WRAP_DS_TRIG     = 45.0         # opening rate per step
-WRAP_MIN_T       = 0.22
-WRAP_MAX_T       = 1.10
-WRAP_SPEED_FAC   = 0.45         # slower during wrap
-DIAG_CAPTURE_MM  = 480.0        # ~sqrt(2)*300
+# Corner wrap detection (earlier & quicker)
+WRAP_OPEN_MM     = 90.0         # ↓ start sooner when side opens
+WRAP_DS_TRIG     = 35.0         # ↓ trigger on smaller opening rate
+WRAP_MIN_T       = 0.12         # ↓ minimum wrap time
+WRAP_MAX_T       = 0.70         # ↓ cap wrap duration
+WRAP_SPEED_FAC   = 0.42         # ↓ slower during wrap steady-state
+WRAP_SPEED_FAC_SNAP = 0.34      # ↓ extra slow for first ~0.2s of wrap
+DIAG_CAPTURE_MM  = 460.0        # exit a bit earlier when new wall is seen
 
-# Smooth-wrap (curvature hold) gains
-WRAP_K_OPEN      = 0.0080       # -> turn from (s - (target+open))
-WRAP_K_RATE      = 0.0055       # -> turn from ds
-WRAP_MIN_TURN    = 3.8          # MIN turn RPM toward chosen wall during wrap
-WRAP_TURN_ALPHA  = 0.25         # EMA for turn hold
-WRAP_PD_SCALE    = 0.25         # scale down PD in wrap (0 disables)
+# Smooth-wrap (curvature hold) gains (tighter & faster)
+WRAP_K_OPEN      = 0.0092       # ↑ curvature from opening
+WRAP_K_RATE      = 0.0062       # ↑ curvature from opening rate
+WRAP_MIN_TURN    = 4.2          # ↑ minimum turn toward wall during wrap
+WRAP_TURN_ALPHA  = 0.50         # ↑ faster EMA so turn hold ramps quickly
+WRAP_PD_SCALE    = 0.22         # ↓ PD influence during wrap to avoid wiggle
+
+# Snap window on wrap entry
+WRAP_SNAP_T      = 0.20         # seconds
 
 # Search
 LOST_SIDE_T      = 0.28
@@ -145,7 +151,6 @@ class Follower:
         turn = STEER_TO_RPM * ff * turn_sign
         # Enforce MIN magnitude toward the wall
         min_signed = WRAP_MIN_TURN * (1 if turn_sign > 0 else -1)
-        # If turn is too small or wrong direction, clamp to min_signed
         if turn_sign > 0:
             if turn < min_signed: turn = min_signed
         else:
@@ -195,7 +200,7 @@ class Follower:
                 open_fast = ds > WRAP_DS_TRIG
                 if (open_far or open_fast) and f > FRONT_STOP_MM:
                     self.mode = "wrap"; self.wrap_t0 = now
-                    # initialize wrap turn hold
+                    # initialize wrap turn hold (strong & fast)
                     init_turn = self._wrap_ff_turn(s, ds, turn_sign)
                     self.wrap_turn_hold = init_turn
                 elif (not side_seen) and (self.lost_since and (now - self.lost_since) > LOST_SIDE_T):
@@ -217,12 +222,9 @@ class Follower:
             diag_close = dL < DIAG_CAPTURE_MM
             close_enough = (s != float('inf')) and ((s - TARGET_MM) < 0.6*WRAP_OPEN_MM)
 
-            # Update wrap turn hold (EMA, and do not let it change direction)
+            # Update wrap turn hold quickly (EMA, toward new FF)
             new_ff = self._wrap_ff_turn(s, ds, turn_sign)
             self.wrap_turn_hold = (1.0 - WRAP_TURN_ALPHA)*self.wrap_turn_hold + WRAP_TURN_ALPHA*new_ff
-            # Prevent sign flip (always turn toward the wall during wrap)
-            if turn_sign > 0 and self.wrap_turn_hold < WRAP_MIN_TURN: self.wrap_turn_hold = WRAP_MIN_TURN
-            if turn_sign < 0 and self.wrap_turn_hold > -WRAP_MIN_TURN: self.wrap_turn_hold = -WRAP_MIN_TURN
 
             if f < FRONT_STOP_MM:
                 self.mode = "rotate"; self.rotate_t0 = now; self.wrap_t0 = None
@@ -265,17 +267,20 @@ class Follower:
             else:
                 steer_pd = 0.0
 
-            # Wrap turn (constant curvature hold) + scaled PD
             if self.mode == "wrap":
-                base *= WRAP_SPEED_FAC
+                # Snap decel for the first WRAP_SNAP_T seconds
+                since_wrap = (time.time() - (self.wrap_t0 or time.time()))
+                speed_fac = WRAP_SPEED_FAC_SNAP if since_wrap < WRAP_SNAP_T else WRAP_SPEED_FAC
+                base *= speed_fac
+
+                # Constant curvature hold + a little PD (downscaled)
                 turn_wrap = self.wrap_turn_hold
-                steer = WRAP_PD_SCALE*steer_pd   # PD subdued in wrap
-                turn_pd = STEER_TO_RPM * steer * (1 if turn_sign > 0 else -1)  # signed toward wall
+                steer = WRAP_PD_SCALE*steer_pd
+                turn_pd = STEER_TO_RPM * steer * (1 if turn_sign > 0 else -1)
                 turn = turn_wrap + turn_pd
             else:
                 turn = STEER_TO_RPM * steer_pd * (1 if turn_sign > 0 else -1)
 
-            # Cap
             if turn >  TURN_CAP_RPM: turn =  TURN_CAP_RPM
             if turn < -TURN_CAP_RPM: turn = -TURN_CAP_RPM
 
