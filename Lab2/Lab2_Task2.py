@@ -1,153 +1,350 @@
-from HamBot.src.robot_systems.robot import HamBot
-import time, math
 
+"""
+HamBot — Task 2 (From Scratch, 250/250) — Faster, Tighter Wrap Variant
+
+Changes from previous "FromScratch_250mm" build:
+- **Faster in wrap:** WRAP_SPEED_FAC -> 0.58 (vs 0.45), and a small boost after the first 0.2 s.
+- **Tighter corner hug:** add a curvature term that targets radius R ≈ SIDE_TARGET_MM (250 mm)
+  so the arc stays close even at higher speed. This term scales with base speed so radius is stable.
+- Slightly stronger min turn & cap to allow tighter arc at speed.
+- Keep signed PD small in wrap (it fine-tunes without creating waves).
+
+Tune TRACK_MM if your robot's wheel track differs (default ~120 mm).
+"""
+
+import time, math
+from HamBot.src.robot_systems.robot import HamBot
+
+# ========================
+# Timing & Targets
+# ========================
+DT = 0.032
+SIDE_TARGET_MM  = 200.0
+FRONT_TARGET_MM = 200.0
+
+# ========================
+# Geometry (wheel track) — tune for your bot if needed
+# ========================
+TRACK_MM = 120.0   # distance between wheel contact points (mm)
+
+# ========================
+# Speeds / limits
+# ========================
+CRUISE_RPM         = 18.0
+SEARCH_RPM         = 16.0
+ROTATE_RPM         = 22.0
+ROTATE_MIN_RPM     = 6.0
+TURN_CAP_RPM       = 9.0       # allow tighter differential for faster wraps
+STEER_TO_RPM       = 0.24
+SLEW_RPM_PER_TICK  = 1.4
+
+# ========================
+# Front thresholds
+# ========================
+FRONT_STOP_MM      = FRONT_TARGET_MM
+FRONT_SLOW_MM      = FRONT_TARGET_MM + 180.0
+ROTATE_EXIT_MM     = FRONT_TARGET_MM + 120.0
+
+# ========================
+# Side PD (no integral)
+# ========================
+KP_SIDE = 0.10
+KD_SIDE = 1.90
+DERIV_CLIP = 1500.0
+
+# ========================
+# Side smoothing
+# ========================
+EMA_ALPHA = 0.30
+NO_WALL_MM = 2000.0
+
+# ========================
+# Corner wrap (faster & tighter)
+# ========================
+WRAP_OPEN_MM     = 90.0
+WRAP_DS_TRIG     = 35.0
+WRAP_MIN_TIME    = 0.12
+WRAP_MAX_TIME    = 0.80
+WRAP_SPEED_FAC   = 0.58         # faster during wrap
+WRAP_SPEED_BOOST = 1.15         # mild boost after entry
+WRAP_BOOST_T     = 0.20         # apply boost after this many seconds in wrap
+
+WRAP_MIN_TURN    = 4.4          # stronger minimum turn toward wall
+WRAP_TURN_ALPHA  = 0.45
+WRAP_K_OPEN      = 0.0096
+WRAP_K_RATE      = 0.0064
+DIAG_CAPTURE_MM  = 420.0
+
+# PD contribution inside wrap (kept modest)
+WRAP_PD_SCALE    = 0.22
+
+# ========================
+# Helpers
+# ========================
 def saturation(bot, rpm):
     max_rpm = getattr(bot, "max_motor_speed", 60)
     if rpm > max_rpm:  return max_rpm
     if rpm < -max_rpm: return -max_rpm
     return rpm
 
-class Defintions():
-    def __init__(self):
-        self.K_p = 0.10
-        self.K_i = 0.15
-        self.K_d = 1.5
-        self.Kp = 2
-        self.Ki = 0
-        self.Kd = 5
-        self.Timestep = 0.025
-        self.Integral = 0.0
-        self.Derivative = 0.0
-        self.PrevError = 0.0
+class Slew:
+    def __init__(self, max_delta):
+        self.prev = 0.0
+        self.maxd = float(max_delta)
+    def step(self, target):
+        d = target - self.prev
+        if d >  self.maxd: d =  self.maxd
+        if d < -self.maxd: d = -self.maxd
+        self.prev += d
+        return self.prev
 
-        # NEW: gentle-stop helpers
-        self.StopBand = 10.0           # mm (tune 8–15)
-        self.I_Limit  = 200.0          # integral clamp
-        self.ApproachSlope = 0.5       # rpm per mm (speed cap shrinks near target)
-        self.MinApproachRPM = 6.0      # don't crawl too slowly far out
+def robust_min(vals, keep=5):
+    xs = [v for v in vals if v and v > 0]
+    if not xs: return float('inf')
+    xs.sort()
+    k = min(keep, len(xs))
+    return sum(xs[:k]) / k
 
-    def forward_PID(self, bot, desired_distance):
-        # NOTE: use the passed-in bot, not the global Bot
-        scan = bot.get_range_image()
-        window = [a for a in scan[175:180] if a and a > 0]
-        if not window:
-            return 0.0
+# Sensors
+def front_mm(bot):
+    scan = bot.get_range_image()
+    return robust_min(scan[176:186], keep=5)
 
-        measured_distance = min(window)
-        error = measured_distance - desired_distance
+def side_mm(bot, side):
+    scan = bot.get_range_image()
+    if side == "left":
+        return robust_min(scan[84:96], keep=7)
+    else:
+        return robust_min(scan[264:276], keep=7)
 
-        # NEW: clean stop when close, and prevent re-accel
-        if abs(error) <= self.StopBand:
-            self.Integral = 0.0
-            self.PrevError = 0.0
-            return 0.0
+def diag_mm(bot, side):
+    scan = bot.get_range_image()
+    if side == "left":
+        return robust_min(scan[128:142], keep=5)   # ~135°
+    else:
+        return robust_min(scan[218:232], keep=5)   # ~225°
 
-        # PID terms
-        self.Integral += error * self.Timestep
-        # NEW: anti-windup clamp
-        self.Integral = max(-self.I_Limit, min(self.Integral, self.I_Limit))
+# ========================
+# Controller
+# ========================
+class WallFollower:
+    def __init__(self, bot, wall_side="left"):
+        self.bot = bot
+        self.side = wall_side
 
-        derivative = (error - self.PrevError) / self.Timestep
-        self.PrevError = error
+        self.side_ema = None
+        self.prev_side = None
+        self.prev_err  = 0.0
 
-        u = (self.K_p * error) + (self.K_i * self.Integral) + (self.K_d * derivative)
+        self.mode = "follow"  # "follow", "wrap", "rotate", "search"
+        self.t0_wrap = None
+        self.t0_rotate = None
+        self.lost_since = None
 
-        # NEW: soft approach – limit RPM based on how close you are
-        cap = max(self.MinApproachRPM, self.ApproachSlope * abs(error))
-        u = math.copysign(min(abs(u), cap), u)
+        self.turn_hold = 0.0   # constant-curvature component during wrap
 
-        return saturation(bot, u)
+        self.l_slew = Slew(SLEW_RPM_PER_TICK)
+        self.r_slew = Slew(SLEW_RPM_PER_TICK)
 
-    def side_PID(self, bot, s_follow, desired_distance):
-        if s_follow not in ("left", "right"):
-            return 0.0  # or raise
+    def _front_speed(self, f_mm):
+        if f_mm <= FRONT_STOP_MM: return 0.0
+        if f_mm >= FRONT_SLOW_MM: return CRUISE_RPM
+        a = (f_mm - FRONT_STOP_MM) / (FRONT_SLOW_MM - FRONT_STOP_MM)
+        return CRUISE_RPM * max(0.0, min(1.0, a))
 
-        scan = bot.get_range_image()
-        sl = slice(85, 95) if s_follow == "left" else slice(265, 275)
-        window = [a for a in scan[sl] if a and a > 0]
-
-        if not window:
-            # optional: also reset integrator to avoid stale windup
-            self.Integral = 0.0
-            self.PrevError = 0.0
-            return 0.0  # or return None if you want caller to detect "no data"
-
-        measured_distance = min(window)
-        error = measured_distance - desired_distance
-
-        if abs(error) <= self.StopBand:
-            self.Integral = 0.0
-            self.PrevError = 0.0
-            return 0.0
-
-        # PID terms
-        self.Integral += error * self.Timestep
-        self.Integral = max(-self.I_Limit, min(self.Integral, self.I_Limit))
-        derivative = (error - self.PrevError) / self.Timestep
-        self.PrevError = error
-
-        u = (self.K_p * error) + (self.K_i * self.Integral) + (self.K_d * derivative)
-
-        # Optional polarity flip for right-following:
-        # if s_follow == "right":
-        #     u = -u
-
-        cap = max(self.MinApproachRPM, self.ApproachSlope * abs(error))
-        u = math.copysign(min(abs(u), cap), u)
-
-        return saturation(bot, u)
-
-    def rotate(self, bot, direction="left", rpm=20, duration=0.70):
-        """
-        Simple in-place spin ~90°. No yaw/IMU. Tune 'duration' to your robot.
-        Resets integrator to avoid stale history after rotation.
-        """
-        if direction == "left":
-            left_cmd, right_cmd = -abs(rpm), abs(rpm)
+    def _rotate_pair(self):
+        # CW for left-follow; CCW for right-follow
+        if self.side == "left":
+            return (+ROTATE_RPM, -ROTATE_RPM)
         else:
-            left_cmd, right_cmd = abs(rpm), -abs(rpm)
+            return (-ROTATE_RPM, +ROTATE_RPM)
 
-        bot.set_left_motor_speed(left_cmd)
-        bot.set_right_motor_speed(right_cmd)
-        time.sleep(duration)
-        bot.set_left_motor_speed(0)
-        bot.set_right_motor_speed(0)
+    def _wrap_ff_turn(self, s, ds, sign):
+        # feed-forward curvature from opening size and rate
+        if s == float('inf'):
+            e_open = WRAP_OPEN_MM
+        else:
+            e_open = max(0.0, s - (SIDE_TARGET_MM + WRAP_OPEN_MM))
+        ff = WRAP_K_OPEN * e_open + WRAP_K_RATE * max(0.0, ds)
+        turn = STEER_TO_RPM * ff * sign
+        # enforce minimum turning toward wall
+        min_signed = WRAP_MIN_TURN * (1 if sign > 0 else -1)
+        if sign > 0:
+            if turn < min_signed: turn = min_signed
+        else:
+            if turn > min_signed: turn = min_signed
+        # cap
+        if turn >  TURN_CAP_RPM: turn =  TURN_CAP_RPM
+        if turn < -TURN_CAP_RPM: turn = -TURN_CAP_RPM
+        return turn
 
-        # Reset controller memory after the maneuver
-        self.Integral = 0.0
-        self.PrevError = 0.0
-        time.sleep(self.Timestep)
+    def _radius_turn(self, base_rpm, sign, R_mm=None):
+        """Turn needed (RPM) to achieve radius R for the robot center: R = (TRACK * V) / (2*Δ) ⇒ Δ = (TRACK*V)/(2*R)."""
+        if R_mm is None: R_mm = SIDE_TARGET_MM
+        R_mm = max(180.0, R_mm)  # avoid singular/too-tight
+        delta = (TRACK_MM * base_rpm) / (2.0 * R_mm)  # RPM
+        turn = delta * (1 if sign > 0 else -1)
+        # cap
+        if turn >  TURN_CAP_RPM: turn =  TURN_CAP_RPM
+        if turn < -TURN_CAP_RPM: turn = -TURN_CAP_RPM
+        # ensure minimum toward wall
+        min_signed = WRAP_MIN_TURN * (1 if sign > 0 else -1)
+        if sign > 0 and turn < min_signed: turn = min_signed
+        if sign < 0 and turn > -min_signed: turn = -min_signed
+        return turn
 
+    def step(self):
+        f = front_mm(self.bot)
+        s_raw = side_mm(self.bot, self.side)
+        d = diag_mm(self.bot, self.side)
+        sign = +1 if self.side == "left" else -1
+        side_seen = s_raw < NO_WALL_MM
+
+        # EMA for side distance
+        if s_raw != float('inf'):
+            if self.side_ema is None: self.side_ema = s_raw
+            else: self.side_ema = EMA_ALPHA*s_raw + (1.0-EMA_ALPHA)*self.side_ema
+        s = self.side_ema if self.side_ema is not None else s_raw
+
+        # opening rate
+        ds = 0.0
+        if self.prev_side is not None and s != float('inf'):
+            ds = s - self.prev_side
+        self.prev_side = s if s != float('inf') else self.prev_side
+
+        # lost wall timer
+        now = time.time()
+        if side_seen: self.lost_since = None
+        else:
+            if self.lost_since is None: self.lost_since = now
+
+        # --- mode transitions ---
+        if self.mode == "follow":
+            if f < FRONT_STOP_MM:
+                self.mode = "rotate"; self.t0_rotate = now
+            else:
+                open_far  = (s != float('inf')) and ((s - SIDE_TARGET_MM) > WRAP_OPEN_MM)
+                open_fast = ds > WRAP_DS_TRIG
+                if (open_far or open_fast) and f > FRONT_STOP_MM:
+                    self.mode = "wrap"; self.t0_wrap = now
+                    # initialize wrap turn (feed-forward)
+                    self.turn_hold = self._wrap_ff_turn(s, ds, sign)
+
+        elif self.mode == "rotate":
+            t = now - (self.t0_rotate or now)
+            can_exit  = t >= 0.26
+            must_exit = t >= 0.90
+            clear     = f > ROTATE_EXIT_MM
+            diag_ok   = d < DIAG_CAPTURE_MM
+            if must_exit or (can_exit and (clear or side_seen or diag_ok)):
+                self.mode = "follow"; self.t0_rotate = None
+
+        elif self.mode == "wrap":
+            t = now - (self.t0_wrap or now)
+            done_time   = t >= WRAP_MIN_TIME
+            too_long    = t >= WRAP_MAX_TIME
+            diag_close  = d < DIAG_CAPTURE_MM
+            side_caught = (s != float('inf')) and abs(s - SIDE_TARGET_MM) < 0.6*WRAP_OPEN_MM
+            if f < FRONT_STOP_MM:
+                self.mode = "rotate"; self.t0_rotate = now; self.t0_wrap = None
+            elif too_long or (done_time and (diag_close or side_caught)):
+                self.mode = "follow"; self.t0_wrap = None
+            else:
+                # Update constant-curvature turn hold
+                new_ff = self._wrap_ff_turn(s, ds, sign)
+                self.turn_hold = (1.0 - WRAP_TURN_ALPHA)*self.turn_hold + WRAP_TURN_ALPHA*new_ff
+
+        # --- command compute ---
+        if self.mode == "rotate":
+            l_cmd, r_cmd = self._rotate_pair()
+            l_cmd *= 0.95; r_cmd *= 0.95
+
+        else:
+            base = self._front_speed(f)
+
+            # side PD
+            if side_seen and s != float('inf'):
+                e = s - SIDE_TARGET_MM
+                dterm = (e - self.prev_err) / DT
+                if dterm >  DERIV_CLIP: dterm =  DERIV_CLIP
+                if dterm < -DERIV_CLIP: dterm = -DERIV_CLIP
+                steer_pd = KP_SIDE*e + KD_SIDE*dterm
+                self.prev_err = e
+            else:
+                steer_pd = 0.0
+
+            if self.mode == "wrap":
+                # faster wrap base speed
+                base *= WRAP_SPEED_FAC
+                if (time.time() - (self.t0_wrap or time.time())) > WRAP_BOOST_T:
+                    base *= WRAP_SPEED_BOOST
+
+                # curvature to target ~250 mm radius (scales with speed)
+                turn_radius = self._radius_turn(base, sign, R_mm=SIDE_TARGET_MM)
+
+                # constant-curvature hold + small PD correction
+                turn = 0.6*turn_radius + 0.4*self.turn_hold + (STEER_TO_RPM * WRAP_PD_SCALE * steer_pd * (1 if sign > 0 else -1))
+            else:
+                turn = STEER_TO_RPM * steer_pd * (1 if sign > 0 else -1)
+
+            # clamp and map to wheels
+            if turn >  TURN_CAP_RPM: turn =  TURN_CAP_RPM
+            if turn < -TURN_CAP_RPM: turn = -TURN_CAP_RPM
+            l_cmd = base - turn
+            r_cmd = base + turn
+
+        l_out = saturation(self.bot, self.l_slew.step(l_cmd))
+        r_out = saturation(self.bot, self.r_slew.step(r_cmd))
+        return l_out, r_out
+
+# ========================
+# Rotation utility (tapered ~90°)
+# ========================
+def rotate_90(bot, wall_side):
+    target_deg = 90.0
+    sign = +1 if wall_side == "left" else -1  # +: CW, -: CCW
+    start = bot.get_heading()
+    while True:
+        cur = bot.get_heading()
+        delta = (cur - start + 540) % 360 - 180
+        prog = abs(delta); rem = max(0.0, target_deg - prog)
+        if rem <= 2.0:
+            break
+        scale = max(ROTATE_MIN_RPM/ROTATE_RPM, min(1.0, rem/target_deg))
+        rpm = ROTATE_RPM * scale
+        bot.set_left_motor_speed( sign * rpm)
+        bot.set_right_motor_speed(-sign * rpm)
+        time.sleep(DT)
+    bot.set_left_motor_speed(0.0)
+    bot.set_right_motor_speed(0.0)
+
+# ========================
+# Main
+# ========================
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
-    wall_follow = "right"  # or "right"
-    d_distance = 300  # side distance goal (mm)
-    front_goal = 300  # how close to front wall before rotate (mm)
-    pp = Defintions()
 
+    wall_side = "left"  # or "right"
+    ctrl = WallFollower(Bot, wall_side=wall_side)
 
-    while True:
-        scan = Bot.get_range_image()
-        fw = [a for a in scan[175:180] if a and a > 0] if isinstance(scan, list) else []
-        forward_distance = min(fw) if fw else float("inf")
+    try:
+        while True:
+            l_rpm, r_rpm = ctrl.step()
+            Bot.set_left_motor_speed(l_rpm)
+            Bot.set_right_motor_speed(r_rpm)
 
-        if wall_follow == "left":
-            f_velocity  =
-        else:  # "right"
-            f_velocity =
+            # explicit rotate on front block
+            f = front_mm(Bot)
+            if f < FRONT_STOP_MM:
+                Bot.set_left_motor_speed(0.0)
+                Bot.set_right_motor_speed(0.0)
+                rotate_90(Bot, wall_side)
 
-        # Rotate if front is close
-        if forward_distance <= front_goal + pp.StopBand:
-            pp.rotate(Bot, direction=("left" if wall_follow == "left" else "right"))
-            time.sleep(pp.Timestep)
-            continue
-
-        # Send to motors at end of loop
-        Bot.set_left_motor_speed(left_cmd)
-        Bot.set_right_motor_speed(right_cmd)
-
-        time.sleep(pp.Timestep)
+            time.sleep(DT)
+    except KeyboardInterrupt:
+        Bot.set_left_motor_speed(0)
+        Bot.set_right_motor_speed(0)
 
 
 
