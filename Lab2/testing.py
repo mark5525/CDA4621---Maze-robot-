@@ -19,7 +19,7 @@ from HamBot.src.robot_systems.robot import HamBot
 # Timing & Targets
 # ========================
 DT = 0.032
-SIDE_TARGET_MM  = 250.0
+SIDE_TARGET_MM  = 200.0
 FRONT_TARGET_MM = 250.0
 
 # ========================
