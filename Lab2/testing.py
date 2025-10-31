@@ -1,15 +1,15 @@
 
 """
-HamBot — Task 2 (LEFT wall following) — Simple PD + Simple Wrap (CW rotate, tuned)
-Tuning applied for straighter side tracking:
-- SimplePD: kp=0.10, kd=1.80
-- deadband_mm=14
-- steer_to_rpm=0.26
-- max_rpm_slew=1.6
-- turn_rpm_cap=7.5
-- cruise_rpm=19.0
-- left_side_distance uses a narrower window (84:96) and keep=7 for smoothing
-- (Optional cap) wrap_bias_max=0.10 to reduce tiny nudges on straights
+HamBot — Task 2 (LEFT wall following) — SIMPLE, re-tuned for:
+1) Clean 90° CW rotates (no 120° overshoot)
+2) Straighter side tracking (reduced oscillation)
+3) Tighter corner hugging (smaller wrap radius)
+
+Changes vs prior "simple_CW_tuned":
+- Rotate: rotate_rpm=22, rotate_min_time=0.28, rotate_max_time=0.90, rotate_exit_mm=340
+          Exit rotate when (time>=min) and (front_clear OR side_seen OR diag_close)
+- Side PD: kp=0.08, kd=2.10; deadband=16; steer_to_rpm=0.22; max_rpm_slew=1.2; turn_rpm_cap=6.5
+- Wrap (tighter): wrap_start_mm=380, wrap_k=0.0105, wrap_speed_fac=0.55, wrap_bias_max=0.12
 """
 
 import time
@@ -53,7 +53,7 @@ def front_distance(bot):
 
 def left_side_distance(bot):
     scan = bot.get_range_image()
-    # Narrower left window and stronger smoothing to reduce jitter
+    # Narrow + smoothed to reduce oscillation
     return robust_min(scan[84:96], keep=7)   # ~90° ±6°
 
 def left_diag_distance(bot):
@@ -65,7 +65,7 @@ def left_diag_distance(bot):
 # ========================
 
 class SimplePD:
-    def __init__(self, kp=0.10, kd=1.80, dt=0.032, d_clip=1500.0):
+    def __init__(self, kp=0.08, kd=2.10, dt=0.032, d_clip=1500.0):
         self.kp, self.kd = kp, kd
         self.dt = dt
         self.prev_e = 0.0
@@ -74,7 +74,6 @@ class SimplePD:
         self.prev_e = 0.0
     def step(self, e):
         d = (e - self.prev_e) / self.dt
-        # clip derivative to avoid spikes from lidar glitches
         if d >  self.d_clip: d =  self.d_clip
         if d < -self.d_clip: d = -self.d_clip
         self.prev_e = e
@@ -91,26 +90,27 @@ class LeftWallFollower:
         self.start_time = time.time()
 
         # Speeds
-        self.cruise_rpm = 19.0            # was 20.0
-        self.rotate_rpm = 26.0
+        self.cruise_rpm = 19.0
+        self.rotate_rpm = 22.0      # gentler CW rotate to reduce overshoot
         self.search_rpm = 18.0
-        self.max_rpm_slew = 1.6           # was 2.0
-        self.steer_to_rpm = 0.26          # was 0.30
-        self.turn_rpm_cap = 7.5           # was 9.0
+        self.max_rpm_slew = 1.2     # calmer changes for straighter tracking
+        self.steer_to_rpm = 0.22    # less steering authority to avoid wag
+        self.turn_rpm_cap = 6.5     # hard cap on differential
 
         # Distances (mm)
         self.target_side_mm = 300.0
-        self.deadband_mm    = 14.0        # was 10.0
+        self.deadband_mm    = 16.0
         self.stop_front_mm  = 280.0
         self.slow_front_mm  = 460.0
-        self.rotate_exit_mm = 380.0
+        self.rotate_exit_mm = 340.0
         self.NO_WALL_THRESH = 1600.0
+        self.diag_capture_mm = 480.0   # ~sqrt(2)*300 for new corridor capture
 
-        # Simple wrap (kept from your last settings, with slightly tighter cap)
-        self.wrap_start_mm  = 400.0
-        self.wrap_k         = 0.009
-        self.wrap_bias_max  = 0.10        # was 0.12 (optional cap for straights)
-        self.wrap_speed_fac = 0.60
+        # Wrap (tighter corners)
+        self.wrap_start_mm  = 380.0
+        self.wrap_k         = 0.0105
+        self.wrap_bias_max  = 0.12
+        self.wrap_speed_fac = 0.55
 
         # Startup pull-in (small)
         self.pull_secs = 0.60
@@ -124,8 +124,8 @@ class LeftWallFollower:
         # State
         self.mode = "follow"  # "follow" | "rotate" | "search"
         self.rotate_t0 = None
-        self.rotate_min_time = 0.36
-        self.rotate_max_time = 1.20
+        self.rotate_min_time = 0.28
+        self.rotate_max_time = 0.90
 
         self.pd = SimplePD(dt=self.dt)
         self.l_slew = SlewLimiter(self.max_rpm_slew)
@@ -168,7 +168,8 @@ class LeftWallFollower:
             can_exit = rotating_for >= self.rotate_min_time
             must_exit = rotating_for >= self.rotate_max_time
             front_clear = f > self.rotate_exit_mm
-            if must_exit or (can_exit and front_clear):
+            diag_close  = d < self.diag_capture_mm
+            if must_exit or (can_exit and (front_clear or side_seen or diag_close)):
                 self.mode = "follow"; self.rotate_t0 = None
 
         elif self.mode == "search":
