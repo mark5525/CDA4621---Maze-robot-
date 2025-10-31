@@ -20,7 +20,7 @@ from HamBot.src.robot_systems.robot import HamBot
 # ========================
 DT = 0.032
 SIDE_TARGET_MM  = 200.0
-FRONT_TARGET_MM = 250.0
+FRONT_TARGET_MM = 200.0
 
 # ========================
 # Geometry (wheel track) — tune for your bot if needed
