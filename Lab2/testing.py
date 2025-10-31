@@ -26,7 +26,7 @@ SEARCH_RPM       = 16.0
 ROT_RPM          = 22.0
 ROT_MIN_RPM      = 6.0
 STEER_TO_RPM     = 0.24
-TURN_CAP_RPM     = 7.0
+TURN_CAP_RPM     = 8.0
 SLEW_RPM_PER_TIK = 1.4
 
 # Front thresholds
@@ -43,19 +43,19 @@ D_CLIP = 1500.0
 EMA_ALPHA        = 0.28
 
 # Corner wrap detection
-WRAP_OPEN_MM     = 120.0        # side - target
-WRAP_DS_TRIG     = 55.0         # opening rate per step
+WRAP_OPEN_MM     = 100.0        # side - target
+WRAP_DS_TRIG     = 45.0         # opening rate per step
 WRAP_MIN_T       = 0.22
 WRAP_MAX_T       = 1.10
-WRAP_SPEED_FAC   = 0.55         # slower during wrap
+WRAP_SPEED_FAC   = 0.45         # slower during wrap
 DIAG_CAPTURE_MM  = 480.0        # ~sqrt(2)*300
 
 # Smooth-wrap (curvature hold) gains
-WRAP_K_OPEN      = 0.0065       # -> turn from (s - (target+open))
-WRAP_K_RATE      = 0.0048       # -> turn from ds
-WRAP_MIN_TURN    = 3.0          # MIN turn RPM toward chosen wall during wrap
+WRAP_K_OPEN      = 0.0080       # -> turn from (s - (target+open))
+WRAP_K_RATE      = 0.0055       # -> turn from ds
+WRAP_MIN_TURN    = 3.8          # MIN turn RPM toward chosen wall during wrap
 WRAP_TURN_ALPHA  = 0.25         # EMA for turn hold
-WRAP_PD_SCALE    = 0.30         # scale down PD in wrap (0 disables)
+WRAP_PD_SCALE    = 0.25         # scale down PD in wrap (0 disables)
 
 # Search
 LOST_SIDE_T      = 0.28
