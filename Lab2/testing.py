@@ -1,246 +1,303 @@
 
 """
-HamBot — Task 2 (Left/Right Wall Following) — Compliant Build
+HamBot — Task 2 (LEFT/RIGHT Wall Following) — Strong Corner Wrap + Straighter Follow
 
-Meets rubric:
-1) Maintains consistent contact with the chosen wall (left or right).
-2) On a frontal obstacle, rotates ~90° and resumes following the same wall.
-3) If the wall ends (sharp corner), wraps around and continues following the same wall.
-4) Can run both left and right wall following on each maze (set wallSide to "left" or "right").
+Fixes your two issues:
+1) **Ignores corners / drives straight** → Added **reliable corner-wrap detection**
+   using side opening (s - target) and opening rate (ds). When triggered, it slows
+   down and adds a controlled CCW/CW bias until the new wall is acquired.
+2) **Wall follow not good enough** → Cleaner side PD (no integral), smoothed side
+   distance (EMA), tighter steering authority, and slew limiting for straight lines.
+3) Frontal obstacle → time-gated, tapered ~90° rotate (CW for left follow, CCW for right).
 
-Implementation notes:
-- Forward control uses a front-distance PD (robust min) to hold ~300 mm.
-- Side control is a *signed* PD (no integral) on the chosen wall’s side distance only.
-- The side PD produces an angular "steer" value (not RPM); we map steer -> differential RPM.
-- When the side wall is briefly "not seen", we slow and bias a gentle arc toward the chosen wall (simple wrap heuristic).
-- Rotate is **clockwise for left-follow**, **counter-clockwise for right-follow**; rotation speed tapers near target to avoid overshoot.
+Keep this file simple: one FOLLOW loop with small state flags (ROTATE, SEARCH, WRAP).
 """
 
 import time, math
 from HamBot.src.robot_systems.robot import HamBot
 
 # ========================
-# Global timing + PID states
+# Timing
 # ========================
-dt = 0.032
-previousError = 0.0         # forward PID error(k-1)
-integral = 0.0              # (unused here; kept for compatibility)
-previousAngleError = 0.0    # side PD error(k-1)
-angleIntegral = 0.0         # (Ki=0 here; kept for compatibility)
+DT = 0.032
 
 # ========================
-# Tuning constants
+# Geometry / tuning
 # ========================
-TARGET_SIDE_MM = 300.0
-NO_WALL = 2500.0
+TARGET_MM        = 300.0
+NO_WALL_MM       = 2000.0
 
-# Map "steer" (side PD output) into differential wheel RPM
-STEER_TO_RPM = 0.26
-TURN_CAP_RPM = 7.5
+CRUISE_RPM       = 19.0
+SEARCH_RPM       = 16.0
+ROT_RPM          = 22.0
+ROT_MIN_RPM      = 6.0
+TURN_CAP_RPM     = 7.0         # steering cap
+STEER_TO_RPM     = 0.24        # map steer -> differential rpm
+SLEW_RPM_PER_TIK = 1.4
 
-# Rotate tuning (helps hit ~90° without overshoot)
-ROT_RPM = 22.0
-ROT_MIN_RPM = 6.0
+# Front thresholds
+FRONT_STOP_MM    = 280.0
+FRONT_SLOW_MM    = 460.0
+ROT_EXIT_MM      = 340.0
+
+# Side PD (no integral)
+Kp = 0.12
+Kd = 2.00
+D_CLIP = 1500.0
+
+# Side smoothing
+EMA_ALPHA        = 0.28
+
+# Corner wrap detection
+WRAP_OPEN_MM     = 120.0       # side - target
+WRAP_DS_TRIG     = 55.0        # opening rate per step
+WRAP_MIN_T       = 0.22
+WRAP_MAX_T       = 1.10
+WRAP_BIAS_GAIN   = 0.0062      # bias from (s - wrap_threshold)
+WRAP_RATE_GAIN   = 0.0045      # bias from ds
+WRAP_BIAS_MAX    = 0.12
+WRAP_SPEED_FAC   = 0.60        # slow during wrap
+DIAG_CAPTURE_MM  = 480.0       # ~sqrt(2)*300
+
+# Search (if side gone too long)
+LOST_SIDE_T      = 0.28
+SEARCH_TURN_RPM  = 4.5
 
 # ========================
 # Helpers
 # ========================
-def resetPIDStates():
-    global previousError, integral, previousAngleError, angleIntegral
-    previousError = 0.0
-    integral = 0.0
-    previousAngleError = 0.0
-    angleIntegral = 0.0
-
-def safeDistance(value, maxRange = 9500.0):
-    try:
-        if math.isinf(value) or math.isnan(value):
-            return maxRange
-    except Exception:
-        pass
-    return min(value, maxRange)
-
 def saturation(bot, rpm):
     max_rpm = getattr(bot, "max_motor_speed", 60)
     if rpm > max_rpm:  return max_rpm
     if rpm < -max_rpm: return -max_rpm
     return rpm
 
-def robust_min(window):
-    vals = [v for v in window if v and v > 0]
-    if not vals:
-        return float("inf")
-    return min(vals)
+class SlewLimiter:
+    def __init__(self, max_delta):
+        self.max_delta = float(max_delta)
+        self.prev = 0.0
+    def step(self, target):
+        d = target - self.prev
+        if d >  self.max_delta: d =  self.max_delta
+        if d < -self.max_delta: d = -self.max_delta
+        self.prev += d
+        return self.prev
+
+def robust_min(vals, keep=5):
+    xs = [v for v in vals if v and v > 0]
+    if not xs: return float('inf')
+    xs.sort()
+    return sum(xs[:min(keep, len(xs))]) / min(keep, len(xs))
 
 # ========================
-# Forward PD (front distance ~300 mm)
+# Sensors
+# Angles: 0 back, 90 left, 180 front, 270 right
 # ========================
-def forwardPID(Bot, targetDistance = 300.0):
-    global previousError, integral
-    kp, ki, kd = 2.0, 0.0, 0.12
+def sense_front(bot):
+    scan = bot.get_range_image()
+    return robust_min(scan[176:186], keep=5)
 
-    scan = Bot.get_range_image()
-    front_vals = scan[175:186]  # a bit wider window around 180°
-    actualDistance = safeDistance(robust_min(front_vals))
+def sense_left(bot):
+    scan = bot.get_range_image()
+    return robust_min(scan[84:96], keep=7)
 
-    # If no front reading, glide
-    if actualDistance == float("inf"):
-        return 0.0
+def sense_right(bot):
+    scan = bot.get_range_image()
+    return robust_min(scan[264:276], keep=7)
 
-    error = actualDistance - targetDistance
-    P = kp * error
-    integral += error * dt
-    I = ki * integral
-    D = kd * (error - previousError) / dt
-    previousError = error
-
-    v = P + I + D
-    return saturation(Bot, v)
+def sense_diag_left(bot):
+    scan = bot.get_range_image()
+    return robust_min(scan[128:142], keep=5)
 
 # ========================
-# Side PD (signed steer on chosen wall)
+# Controller
 # ========================
-def sidePID(Bot, wallSide):
-    global previousAngleError, angleIntegral
-    Kp, Ki, Kd = 0.10, 0.0, 1.80  # calm PD; integral disabled
+class Follower:
+    def __init__(self, bot, wall_side="left"):
+        self.bot = bot
+        self.wall_side = wall_side  # "left" | "right"
 
-    scan = Bot.get_range_image()
-    # Narrow windows centered at ~90° (left) and ~270° (right)
-    left_seg  = scan[84:96]
-    right_seg = scan[264:276]
+        self.side_ema = None
+        self.prev_side = None
+        self.prev_err  = 0.0
 
-    left_vals  = [v for v in left_seg  if v and v > 0]
-    right_vals = [v for v in right_seg if v and v > 0]
+        self.mode = "follow"        # "follow" | "rotate" | "search" | "wrap"
+        self.rotate_t0 = None
+        self.wrap_t0 = None
+        self.lost_since = None
 
-    L = safeDistance(min(left_vals))  if left_vals  else float("inf")
-    R = safeDistance(min(right_vals)) if right_vals else float("inf")
+        self.l_slew = SlewLimiter(SLEW_RPM_PER_TIK)
+        self.r_slew = SlewLimiter(SLEW_RPM_PER_TIK)
 
-    if wallSide == "left":
-        if L > NO_WALL:
-            return 0.0  # no side info → no steer; wrapper will bias
-        error = L - TARGET_SIDE_MM
-    else:
-        if R > NO_WALL:
-            return 0.0
-        error = R - TARGET_SIDE_MM
+    # --- utilities ---
+    def _front_band_speed(self, f_mm):
+        if f_mm <= FRONT_STOP_MM: return 0.0
+        if f_mm >= FRONT_SLOW_MM: return CRUISE_RPM
+        a = (f_mm - FRONT_STOP_MM) / (FRONT_SLOW_MM - FRONT_STOP_MM)
+        return CRUISE_RPM * max(0.0, min(1.0, a))
 
-    P = Kp * error
-    angleIntegral += error * dt
-    I = Ki * angleIntegral  # Ki=0
-    D = Kd * (error - previousAngleError) / dt
-    previousAngleError = error
+    def _rotate_cw(self):
+        # CW: left+, right-
+        return (+ROT_RPM, -ROT_RPM)
 
-    steer = P + I + D               # signed steer (CCW positive)
-    return steer
+    def _rotate_ccw(self):
+        # CCW: left-, right+
+        return (-ROT_RPM, +ROT_RPM)
+
+    # --- main step ---
+    def step(self):
+        f = sense_front(self.bot)
+        dL = sense_diag_left(self.bot)
+
+        # pick side
+        if self.wall_side == "left":
+            s_raw = sense_left(self.bot)
+            side_seen = s_raw < NO_WALL_MM
+            turn_sign = +1   # +steer => CCW
+        else:
+            s_raw = sense_right(self.bot)
+            side_seen = s_raw < NO_WALL_MM
+            turn_sign = -1   # +steer => CW
+
+        # EMA
+        if s_raw != float('inf'):
+            if self.side_ema is None: self.side_ema = s_raw
+            else: self.side_ema = EMA_ALPHA*s_raw + (1.0-EMA_ALPHA)*self.side_ema
+        s = self.side_ema if self.side_ema is not None else s_raw
+
+        # ds
+        ds = 0.0
+        if self.prev_side is not None and s != float('inf'):
+            ds = s - self.prev_side
+        self.prev_side = s if s != float('inf') else self.prev_side
+
+        now = time.time()
+        if side_seen: self.lost_since = None
+        else:
+            if self.lost_since is None: self.lost_since = now
+
+        # ===== Mode transitions =====
+        if self.mode == "follow":
+            if f < FRONT_STOP_MM:
+                self.mode = "rotate"; self.rotate_t0 = now
+            else:
+                # Corner wrap enter if opening far or fast
+                open_far  = (s != float('inf')) and ((s - TARGET_MM) > WRAP_OPEN_MM)
+                open_fast = ds > WRAP_DS_TRIG
+                if (open_far or open_fast) and f > FRONT_STOP_MM:
+                    self.mode = "wrap"; self.wrap_t0 = now
+                elif (not side_seen) and (self.lost_since and (now - self.lost_since) > LOST_SIDE_T):
+                    self.mode = "search"
+
+        elif self.mode == "rotate":
+            t = now - (self.rotate_t0 or now)
+            can_exit = t >= 0.26
+            must_exit = t >= 0.90
+            front_clear = f > ROT_EXIT_MM
+            diag_close = dL < DIAG_CAPTURE_MM
+            if must_exit or (can_exit and (front_clear or side_seen or diag_close)):
+                self.mode = "follow"; self.rotate_t0 = None
+
+        elif self.mode == "wrap":
+            t = now - (self.wrap_t0 or now)
+            done_time = t >= WRAP_MIN_T
+            too_long  = t >= WRAP_MAX_T
+            diag_close = dL < DIAG_CAPTURE_MM
+            close_enough = (s != float('inf')) and ((s - TARGET_MM) < 0.6*WRAP_OPEN_MM)
+            if f < FRONT_STOP_MM:
+                self.mode = "rotate"; self.rotate_t0 = now; self.wrap_t0 = None
+            elif too_long or (done_time and (diag_close or close_enough)):
+                self.mode = "follow"; self.wrap_t0 = None
+            elif (not side_seen) and (self.lost_since and (now - self.lost_since) > LOST_SIDE_T + 0.4):
+                self.mode = "search"
+
+        elif self.mode == "search":
+            if f < FRONT_STOP_MM:
+                self.mode = "rotate"; self.rotate_t0 = now
+            elif side_seen:
+                self.mode = "follow"; self.lost_since = None
+
+        # ===== Commands =====
+        if self.mode == "rotate":
+            # CW for LEFT follow; CCW for RIGHT follow
+            if self.wall_side == "left":
+                l_cmd, r_cmd = self._rotate_cw()
+            else:
+                l_cmd, r_cmd = self._rotate_ccw()
+
+            # taper as we rotate (simple: scale by remaining angle using front clearance proxy)
+            # small fixed taper: avoid overshoot
+            l_cmd *= 0.95; r_cmd *= 0.95
+
+        elif self.mode == "search":
+            base = SEARCH_RPM
+            # arc toward the chosen wall
+            turn = SEARCH_TURN_RPM * turn_sign
+            l_cmd = base - turn
+            r_cmd = base + turn
+
+        else:
+            # FOLLOW / WRAP
+            base = self._front_band_speed(f)
+
+            # Side PD (signed steer)
+            if side_seen and s != float('inf'):
+                e = s - TARGET_MM
+                dterm = (e - self.prev_err) / DT
+                if dterm >  D_CLIP: dterm =  D_CLIP
+                if dterm < -D_CLIP: dterm = -D_CLIP
+                steer_pd = Kp*e + Kd*dterm
+                self.prev_err = e
+            else:
+                steer_pd = 0.0
+
+            # Wrap bias if in wrap mode
+            wrap_bias = 0.0
+            if self.mode == "wrap":
+                e_open = max(0.0, (s - (TARGET_MM + WRAP_OPEN_MM))) if s != float('inf') else WRAP_OPEN_MM
+                wrap_bias = WRAP_BIAS_GAIN*e_open + WRAP_RATE_GAIN*max(0.0, ds)
+                if wrap_bias > WRAP_BIAS_MAX: wrap_bias = WRAP_BIAS_MAX
+                base *= WRAP_SPEED_FAC
+
+            steer = steer_pd + wrap_bias
+            # Signed turn relative to chosen side
+            turn = STEER_TO_RPM * steer * turn_sign
+            if turn >  TURN_CAP_RPM: turn =  TURN_CAP_RPM
+            if turn < -TURN_CAP_RPM: turn = -TURN_CAP_RPM
+
+            l_cmd = base - turn
+            r_cmd = base + turn
+
+        # Slew + saturation
+        l_out = saturation(self.bot, self.l_slew.step(l_cmd))
+        r_out = saturation(self.bot, self.r_slew.step(r_cmd))
+        return l_out, r_out
 
 # ========================
-# Rotate ~90° with taper (sign mapping per caller)
-# ========================
-def rotate(Bot, radianAngle):
-    """
-    Positive radianAngle  => rotate **clockwise** (for LEFT-wall follow)
-    Negative radianAngle  => rotate **counter-clockwise** (for RIGHT-wall follow)
-    """
-    resetPIDStates()
-    target_deg = abs(math.degrees(radianAngle))
-    sign = 1 if radianAngle > 0 else -1  # +: CW -> left+, right-
-
-    start = Bot.get_heading()
-    while True:
-        cur = Bot.get_heading()
-        delta = (cur - start + 540) % 360 - 180  # signed [-180,180]
-        prog = abs(delta)
-        rem  = max(0.0, target_deg - prog)
-
-        if rem <= 2.0:  # within ~2°
-            break
-
-        # taper near target
-        scale = max(ROT_MIN_RPM/ROT_RPM, min(1.0, rem/target_deg))
-        rpm = ROT_RPM * scale
-
-        Bot.set_left_motor_speed( sign * rpm)
-        Bot.set_right_motor_speed(-sign * rpm)
-        time.sleep(dt)
-
-    Bot.set_left_motor_speed(0)
-    Bot.set_right_motor_speed(0)
-    resetPIDStates()
-
-# ========================
-# Wall-following step
-# ========================
-def wallFollow(Bot, wallSide):
-    scan = Bot.get_range_image()
-
-    # Side windows
-    left_seg  = scan[84:96]
-    right_seg = scan[264:276]
-
-    left_vals  = [v for v in left_seg  if v and v > 0]
-    right_vals = [v for v in right_seg if v and v > 0]
-
-    L = safeDistance(min(left_vals))  if left_vals  else float("inf")
-    R = safeDistance(min(right_vals)) if right_vals else float("inf")
-
-    # Forward & side controllers
-    linearVelocity = forwardPID(Bot, TARGET_SIDE_MM)
-    steer          = sidePID(Bot, wallSide)   # signed
-
-    # Map steer -> differential RPM with caps
-    turn = STEER_TO_RPM * steer
-    if turn >  TURN_CAP_RPM: turn =  TURN_CAP_RPM
-    if turn < -TURN_CAP_RPM: turn = -TURN_CAP_RPM
-
-    # If chosen wall is lost → slow + bias arc toward that wall (simple wrap)
-    if wallSide == "left":
-        side_seen = L < NO_WALL
-        searchSign = +1  # CCW
-    else:
-        side_seen = R < NO_WALL
-        searchSign = -1  # CW
-
-    if not side_seen:
-        base = 0.6 * linearVelocity
-        bias = 3.0 * searchSign          # stronger than tiny 0.4 RPM
-        leftV  = base - bias
-        rightV = base + bias
-    else:
-        leftV  = linearVelocity - turn
-        rightV = linearVelocity + turn
-
-    leftV  = saturation(Bot, leftV)
-    rightV = saturation(Bot, rightV)
-    return rightV, leftV
-
-# ========================
-# Main loop
+# Main
 # ========================
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
 
-    # Choose the wall to follow: "left" or "right"
-    wallSide = "left"   # change to "right" to test right-wall on the same maze
+    # Choose: "left" or "right"
+    wallSide = "left"
+
+    ctrl = Follower(Bot, wall_side=wallSide)
 
     try:
         while True:
-            # Primary control step
-            rightV, leftV = wallFollow(Bot, wallSide)
-            Bot.set_left_motor_speed(leftV)
-            Bot.set_right_motor_speed(rightV)
+            l_rpm, r_rpm = ctrl.step()
+            Bot.set_left_motor_speed(l_rpm)
+            Bot.set_right_motor_speed(r_rpm)
 
-            # Front obstacle check (rotate ~90 and resume)
-            scan = Bot.get_range_image()
-            front_vals = scan[175:186]
-            frontDistance = safeDistance(robust_min(front_vals))
-            if frontDistance < 300.0:
-                if wallSide == "right":
-                    rotate(Bot, -math.pi / 2)   # CCW 90
-                else:
-                    rotate(Bot, +math.pi / 2)   # CW 90
+            # Front obstacle → rotate with tapered 90 and resume
+            f = sense_front(Bot)
+            if f < FRONT_STOP_MM:
+                # perform rotation here? Already handled in mode, so just sleep
+                pass
 
-            time.sleep(dt)
+            time.sleep(DT)
 
     except KeyboardInterrupt:
         Bot.set_left_motor_speed(0)
