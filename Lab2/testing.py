@@ -30,7 +30,7 @@ CRUISE_RPM         = 18.0
 SEARCH_RPM         = 16.0
 ROTATE_RPM         = 22.0
 ROTATE_MIN_RPM     = 6.0
-TURN_CAP_RPM       = 10.5       # allow tighter differential for faster wraps
+TURN_CAP_RPM       = 11.0       # allow tighter differential for faster wraps
 STEER_TO_RPM       = 0.24
 SLEW_RPM_PER_TICK  = 1.4
 
@@ -77,7 +77,7 @@ WRAP_RAMP_RANGE_MM = 180.0  # ramp wrap curvature from far -> near target
 WRAP_DS_EXIT       = -10.0  # if ds < -10 mm/step (closing), allow exit
 WRAP_COOLDOWN_S    = 0.20   # don't re-enter wrap for 0.2s after exit
 
-WRAP_R_TARGET_MM = 220.0  # aim to hug corner a little tighter than side target
+WRAP_R_TARGET_MM = 200.0  # aim to hug corner a little tighter than side target
 
 # PD contribution inside wrap (kept modest)
 WRAP_PD_SCALE    = 0.22
