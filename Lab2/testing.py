@@ -30,7 +30,7 @@ CRUISE_RPM         = 18.0
 SEARCH_RPM         = 16.0
 ROTATE_RPM         = 22.0
 ROTATE_MIN_RPM     = 6.0
-TURN_CAP_RPM       = 12.0       # allow tighter differential for faster wraps
+TURN_CAP_RPM       = 12.5     # allow tighter differential for faster wraps
 STEER_TO_RPM       = 0.24
 SLEW_RPM_PER_TICK  = 1.4
 
@@ -51,13 +51,13 @@ DERIV_CLIP = 1500.0
 # ========================
 # Side smoothing
 # ========================
-EMA_ALPHA = 0.30
-NO_WALL_MM = 2000.0
+EMA_ALPHA = 0.55
+NO_WALL_MM = 4000.0
 
 # ========================
 # Corner wrap (faster & tighter)
 # ========================
-WRAP_OPEN_MM     = 74.0
+WRAP_OPEN_MM     = 70.0
 WRAP_DS_TRIG     = 26.0
 WRAP_MIN_TIME    = 0.12
 WRAP_MAX_TIME    = 0.80
@@ -65,10 +65,10 @@ WRAP_SPEED_FAC   = 0.64         # faster during wrap
 WRAP_SPEED_BOOST = 1.22         # mild boost after entry
 WRAP_BOOST_T     = 0.12         # apply boost after this many seconds in wrap
 
-WRAP_MIN_TURN    = 6.0         # stronger minimum turn toward wall
+WRAP_MIN_TURN    = 6.4        # stronger minimum turn toward wall
 WRAP_TURN_ALPHA  = 0.55
-WRAP_K_OPEN      = 0.0112
-WRAP_K_RATE      = 0.0076
+WRAP_K_OPEN      = 0.0116
+WRAP_K_RATE      = 0.0080
 DIAG_CAPTURE_MM  = 420.0
 
 # ===== Wrap exit/ramp parameters =====
@@ -77,10 +77,10 @@ WRAP_RAMP_RANGE_MM = 220.0  # ramp wrap curvature from far -> near target
 WRAP_DS_EXIT       = -10.0  # if ds < -10 mm/step (closing), allow exit
 WRAP_COOLDOWN_S    = 0.20   # don't re-enter wrap for 0.2s after exit
 
-WRAP_R_TARGET_MM = 180.0  # aim to hug corner a little tighter than side target
+WRAP_R_TARGET_MM = 170.0  # aim to hug corner a little tighter than side target
 
 # PD contribution inside wrap (kept modest)
-WRAP_PD_SCALE    = 0.26
+WRAP_PD_SCALE    = 0.28
 
 # ========================
 # Helpers
