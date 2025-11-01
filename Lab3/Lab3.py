@@ -1,7 +1,7 @@
 import math, time
 from HamBot.src.robot_systems.robot import HamBot
 import HamBot.src.robot_systems.camera
-
+import Lab2.Lab2_Task2
 '''
 main functions to use 
  def _capture_loop(self):
@@ -36,8 +36,34 @@ use this to confirm we are at the target
     have it following a wall till it finds it use get_frame to confirm
     stop the motors then stop the camera 
 '''
+if __name__ == "__main__":
+    Bot = HamBot(lidar_enabled=True, camera_enabled=False)
+    Bot.max_motor_speed = 60
 
-Bot = HamBot()
 
-Bot._capture_loop()
-Bot.set_target_colors("yellow")
+    Bot.set_target_colors((255, 255, 0)) #yellow
+    wall_side = "left"  # or "right"
+    ctrl = Bot.WallFollower(Bot, wall_side=wall_side)
+
+    try:
+        while True:
+            Bot._capture_loop()
+            l_rpm, r_rpm = ctrl.step()
+            Bot.set_left_motor_speed(l_rpm)
+            Bot.set_right_motor_speed(r_rpm)
+            if Bot.find_landmarks and (Bot.front_mm <= 240 or Bot.front_mm >= 260) :
+                break
+            # explicit rotate on front block
+            f = Bot.front_mm(Bot)
+            if f < Bot.FRONT_STOP_MM:
+                Bot.set_left_motor_speed(0.0)
+                Bot.set_right_motor_speed(0.0)
+                Bot.rotate_90(Bot, wall_side)
+                if Bot.find_landmarks:
+                    break
+            time.sleep(Bot.DT)
+
+
+    except KeyboardInterrupt:
+        Bot.set_left_motor_speed(0)
+        Bot.set_right_motor_speed(0)
