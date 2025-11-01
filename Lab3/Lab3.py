@@ -1,7 +1,7 @@
 import math, time
 from HamBot.src.robot_systems.robot import HamBot
 import HamBot.src.robot_systems.camera
-import Lab2.Lab2_Task2
+from CDA4621---Maze-robot-.Lab2.Lab2_Task2 import WallFollower
 '''
 main functions to use 
  def _capture_loop(self):
@@ -37,11 +37,11 @@ use this to confirm we are at the target
     stop the motors then stop the camera 
 '''
 if __name__ == "__main__":
-    Bot = HamBot(lidar_enabled=True, camera_enabled=False)
+    Bot = HamBot(lidar_enabled=True, camera_enabled=True)
     Bot.max_motor_speed = 60
 
 
-    Bot.set_target_colors((255, 255, 0)) #yellow
+    Bot.set_target_colors((96, 111, 31)) #yellow
     wall_side = "left"  # or "right"
     ctrl = Bot.WallFollower(Bot, wall_side=wall_side)
 
