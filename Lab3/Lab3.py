@@ -1,7 +1,7 @@
 import math, time
 from HamBot.src.robot_systems.robot import HamBot
 import HamBot.src.robot_systems.camera
-import Lab2_Task2
+import Lab2.Lab2_Task2
 '''
 main functions to use 
  def _capture_loop(self):
