@@ -3,7 +3,6 @@ import math, time
 import Lab2_Task2
 from HamBot.src.robot_systems.robot import HamBot
 import HamBot.src.robot_systems.camera
-from Lab2.Lab2_Task2 import front_mm, FRONT_STOP_MM
 
 '''
 main functions to use 
