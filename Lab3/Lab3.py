@@ -1,8 +1,9 @@
 
 import math, time
 import Lab2_Task2
+from HamBot.src.robot_systems import camera
 from HamBot.src.robot_systems.robot import HamBot
-import HamBot.src.robot_systems.camera
+
 
 '''
 main functions to use 
@@ -39,7 +40,7 @@ use this to confirm we are at the target
     stop the motors then stop the camera 
 '''
 if __name__ == "__main__":
-    Bot = HamBot(lidar_enabled=True, camera_enabled=True)
+    Bot = HamBot(lidar_enabled = True, camera_enabled = True)
     Bot.max_motor_speed = 60
 
 
