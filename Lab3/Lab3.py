@@ -2,6 +2,7 @@ from Lab2 import Lab2_Task2
 import math, time
 from HamBot.src.robot_systems.robot import HamBot
 import HamBot.src.robot_systems.camera
+from Lab2.Lab2_Task2 import front_mm, FRONT_STOP_MM
 
 '''
 main functions to use 
@@ -38,33 +39,34 @@ use this to confirm we are at the target
     stop the motors then stop the camera 
 '''
 if __name__ == "__main__":
-    Bot = HamBot(lidar_enabled=True, camera_enabled=True)
+    Bot = Lab2_Task2.HamBot(lidar_enabled=True, camera_enabled=True)
     Bot.max_motor_speed = 60
 
 
-    Bot.set_target_colors((96, 111, 31)) #yellow
+    Bot.camera.set_target_colors((96, 111, 31)) #yellow
     wall_side = "left"  # or "right"
-    ctrl = Bot.WallFollower(Bot, wall_side=wall_side)
+    ctrl = Lab2_Task2.WallFollower(Bot, wall_side=wall_side)
 
     try:
         while True:
-            Bot._capture_loop()
+            Bot.camera._capture_loop()
             l_rpm, r_rpm = ctrl.step()
             Bot.set_left_motor_speed(l_rpm)
             Bot.set_right_motor_speed(r_rpm)
-            if Bot.find_landmarks and (Bot.front_mm <= 240 or Bot.front_mm >= 260) :
+            if Bot.camera.find_landmarks and (Lab2_Task2.FRONT_STOP_MM <= 240 or Lab2_Task2.FRONT_STOP_MM >= 260) :
                 break
             # explicit rotate on front block
-            f = Bot.front_mm(Bot)
-            if f < Bot.FRONT_STOP_MM:
+            f = Lab2_Task2.front_mm(Bot)
+            if f < Lab2_Task2.FRONT_STOP_MM:
                 Bot.set_left_motor_speed(0.0)
                 Bot.set_right_motor_speed(0.0)
-                Bot.rotate_90(Bot, wall_side)
-                if Bot.find_landmarks:
+                Lab2_Task2.rotate_90(Bot, wall_side)
+                if Bot.camera.find_landmarks:
                     break
-            time.sleep(Bot.DT)
+            time.sleep(Lab2_Task2.DT)
 
 
     except KeyboardInterrupt:
         Bot.set_left_motor_speed(0)
         Bot.set_right_motor_speed(0)
+print(FRONT_STOP_MM)
