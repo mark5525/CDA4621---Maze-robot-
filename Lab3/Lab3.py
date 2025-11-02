@@ -1,4 +1,4 @@
-from Lab2 import Lab2_Task2
+from Lab2.Lab2_Task2 import WallFollower
 import math, time
 from HamBot.src.robot_systems.robot import HamBot
 import HamBot.src.robot_systems.camera
