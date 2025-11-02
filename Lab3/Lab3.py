@@ -39,7 +39,7 @@ use this to confirm we are at the target
     stop the motors then stop the camera 
 '''
 if __name__ == "__main__":
-    Bot = Lab2_Task2.HamBot(lidar_enabled=True, camera_enabled=True)
+    Bot = HamBot(lidar_enabled=True, camera_enabled=True)
     Bot.max_motor_speed = 60
 
 
@@ -69,4 +69,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         Bot.set_left_motor_speed(0)
         Bot.set_right_motor_speed(0)
-print(FRONT_STOP_MM)
