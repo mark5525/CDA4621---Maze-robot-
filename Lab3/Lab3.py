@@ -1,5 +1,6 @@
-from Lab2.Lab2_Task2 import WallFollower, rotate_90
+
 import math, time
+from Lab2 import Lab2_Task2
 from HamBot.src.robot_systems.robot import HamBot
 import HamBot.src.robot_systems.camera
 from Lab2.Lab2_Task2 import front_mm, FRONT_STOP_MM
