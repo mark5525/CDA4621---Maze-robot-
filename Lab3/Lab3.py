@@ -50,7 +50,6 @@ if __name__ == "__main__":
 
     try:
         while True:
-            Bot.camera._capture_loop()
             l_rpm, r_rpm = ctrl.step()
             Bot.set_left_motor_speed(l_rpm)
             Bot.set_right_motor_speed(r_rpm)
