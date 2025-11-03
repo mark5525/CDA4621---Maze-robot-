@@ -120,7 +120,7 @@ if __name__ == "__main__":
         print("Landmark detected! Stopping rotation.")
         Bot.set_left_motor_speed(50)
         Bot.set_right_motor_speed(50)
-    Bot.camera.set_target_colors((96, 111, 31)) #green
+    Bot.camera.set_target_colors((110, 127, 59)) #green
     wall_side = "left"  # or "right"
     ctrl = Lab2_Task2.WallFollower(Bot, wall_side=wall_side)
 
