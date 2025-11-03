@@ -37,25 +37,10 @@ import math, time
 import Lab2_Task2
 from HamBot.src.robot_systems import camera
 from HamBot.src.robot_systems.robot import HamBot
-
+#
 def first_scan(Bot):
     scan = Bot.get_range_image()
     # Get distances: left (90°), front (180°), right (270°)
-    left = scan[90]
-    front = scan[180]
-    right = scan[270]
-    
-    match (left, front, right):
-        case (l, f, r) if l < 200 and f < 200 and r < 200:
-            print("Close on all sides")
-        case (l, f, r) if f < 200:
-            print("Close in front")
-        case (l, f, r) if l < 200:
-            print("Close on left")
-        case (l, f, r) if r < 200:
-            print("Close on right")
-        case _:
-            print("All clear")
 
 def rotate_360(bot, direction="left", check_landmarks=None):
     """
@@ -69,6 +54,10 @@ def rotate_360(bot, direction="left", check_landmarks=None):
     Returns:
         True if landmark was found during rotation, False otherwise
     """
+    # Check BEFORE starting rotation - robot might already be facing landmark
+    if check_landmarks is not None and check_landmarks():
+        return True
+    
     sign = -1 if direction == "left" else +1  # -1: CCW (left), +1: CW (right)
     start_heading = bot.get_heading()
     ROTATE_RPM = 20.0
