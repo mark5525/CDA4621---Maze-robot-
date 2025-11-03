@@ -115,12 +115,12 @@ def Landmark_checking(bot):
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled = True, camera_enabled = True)
     Bot.max_motor_speed = 60
+    Bot.camera.set_target_colors((110, 127, 59))
 
     if(Landmark_checking(Bot) == True):
         print("Landmark detected! Stopping rotation.")
         Bot.set_left_motor_speed(50)
         Bot.set_right_motor_speed(50)
-    Bot.camera.set_target_colors((110, 127, 59)) #green
     wall_side = "left"  # or "right"
     ctrl = Lab2_Task2.WallFollower(Bot, wall_side=wall_side)
 
