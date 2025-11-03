@@ -116,11 +116,26 @@ if __name__ == "__main__":
     Bot = HamBot(lidar_enabled = True, camera_enabled = True)
     Bot.max_motor_speed = 60
     Bot.camera.set_target_colors((119, 134, 54))
+    landmark_distance = 250
+
 
     if(Landmark_checking(Bot) == True):
-        print("Landmark detected! Stopping rotation.")
-        Bot.set_left_motor_speed(50)
-        Bot.set_right_motor_speed(50)
+        print("Landmark detected! Driving to target distance...")
+        target = landmark_distance
+        v = min(50, getattr(Bot, "max_motor_speed", 60))
+        while True:
+            scan = Bot.get_range_image()
+            window = [a for a in scan[175:180] if a and a > 0]
+            if not window:
+                break
+            actual = min(window)
+            if actual <= target:
+                break
+            Bot.set_left_motor_speed(v)
+            Bot.set_right_motor_speed(v)
+            time.sleep(0.03)
+        Bot.set_left_motor_speed(0)
+        Bot.set_right_motor_speed(0)
     wall_side = "left"  # or "right"
     ctrl = Lab2_Task2.WallFollower(Bot, wall_side=wall_side)
 
