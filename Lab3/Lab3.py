@@ -115,7 +115,7 @@ def Landmark_checking(bot):
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled = True, camera_enabled = True)
     Bot.max_motor_speed = 60
-    Bot.camera.set_target_colors((110, 127, 59))
+    Bot.camera.set_target_colors((119, 134, 54))
 
     if(Landmark_checking(Bot) == True):
         print("Landmark detected! Stopping rotation.")
