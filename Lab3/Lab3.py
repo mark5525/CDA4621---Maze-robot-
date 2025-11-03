@@ -55,8 +55,7 @@ def rotate_360(bot, direction="left", check_landmarks=None):
         True if landmark was found during rotation, False otherwise
     """
     # Check BEFORE starting rotation - robot might already be facing landmark
-    if check_landmarks is not None and check_landmarks():
-        return True
+
     
     sign = -1 if direction == "left" else +1  # -1: CCW (left), +1: CW (right)
     start_heading = bot.get_heading()
@@ -65,7 +64,8 @@ def rotate_360(bot, direction="left", check_landmarks=None):
     DT = 0.032
     total_rotated = 0.0
     last_heading = start_heading
-    
+    if check_landmarks is not None and check_landmarks():
+        return True
     while total_rotated < 360.0:
         # Check for landmarks FIRST - stop immediately if found
         if check_landmarks is not None and check_landmarks():
