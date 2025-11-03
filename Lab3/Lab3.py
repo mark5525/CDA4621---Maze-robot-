@@ -59,20 +59,19 @@ def rotate_360(bot, direction="left", check_landmarks=None):
     
     sign = -1 if direction == "left" else +1  # -1: CCW (left), +1: CW (right)
     start_heading = bot.get_heading()
-    ROTATE_RPM = 20.0
-    ROTATE_MIN_RPM = 6.0
-    DT = 0.032
+    ROTATE_RPM = 15.0  # Slower rotation for better camera detection
+    ROTATE_MIN_RPM = 5.0
+    DT = 0.05  # Longer delay for camera processing
+    CHECK_INTERVAL = 0.1  # Additional pause before checking landmarks
     total_rotated = 0.0
     last_heading = start_heading
+    
+    # Initial check before any rotation
+    time.sleep(CHECK_INTERVAL)  # Give camera time to process
     if check_landmarks is not None and check_landmarks():
         return True
+    
     while total_rotated < 360.0:
-        # Check for landmarks FIRST - stop immediately if found
-        if check_landmarks is not None and check_landmarks():
-            bot.set_left_motor_speed(0.0)
-            bot.set_right_motor_speed(0.0)
-            return True
-        
         cur_heading = bot.get_heading()
         
         # Calculate angular change (handles wrap-around at 360/0)
@@ -86,9 +85,20 @@ def rotate_360(bot, direction="left", check_landmarks=None):
             break
         scale = max(ROTATE_MIN_RPM/ROTATE_RPM, min(1.0, remaining/360.0))
         rpm = ROTATE_RPM * scale
+        
+        # Set motors to rotate
         bot.set_left_motor_speed(sign * rpm)
         bot.set_right_motor_speed(-sign * rpm)
         time.sleep(DT)
+        
+        # Stop briefly to check for landmarks (reduces motion blur)
+        bot.set_left_motor_speed(0.0)
+        bot.set_right_motor_speed(0.0)
+        time.sleep(CHECK_INTERVAL)  # Give camera time to capture/process
+        
+        # Check for landmarks while stationary
+        if check_landmarks is not None and check_landmarks():
+            return True
     
     bot.set_left_motor_speed(0.0)
     bot.set_right_motor_speed(0.0)
