@@ -95,8 +95,10 @@ if __name__ == "__main__":
             Bot.set_left_motor_speed(v)
             Bot.set_right_motor_speed(v)
             time.sleep(0.03)
-            Bot.set_left_motor_speed(0)
-            Bot.set_right_motor_speed(0)
+        
+        # Stop motors after reaching target
+        Bot.set_left_motor_speed(0)
+        Bot.set_right_motor_speed(0)
     wall_side = "left"  # or "right"
     ctrl = Lab2_Task2.WallFollower(Bot, wall_side=wall_side)
 
