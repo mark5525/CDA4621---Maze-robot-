@@ -99,6 +99,9 @@ if __name__ == "__main__":
         # Stop motors after reaching target
         Bot.set_left_motor_speed(0)
         Bot.set_right_motor_speed(0)
+        print("Target reached! Program complete.")
+        exit()
+    
     wall_side = "left"  # or "right"
     ctrl = Lab2_Task2.WallFollower(Bot, wall_side=wall_side)
 
