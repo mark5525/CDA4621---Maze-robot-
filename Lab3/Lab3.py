@@ -1,38 +1,3 @@
-'''
-main functions to use 
- def _capture_loop(self):
-        """Continuously capture frames and normalize to TRUE RGB, honoring flip setting."""
-        use this to see what is around us 
-
-
-use this to confirm we are at the target 
- def get_frame(self, copy=True):
-        """
-        Returns the latest RGB frame.
-
-    if get_frame == "yellow" & lidar distance from the target is between (0.24-0.26 for error margin) 
-    bot.stop motors 
-
-     def set_target_colors(self, colors, tolerance=0.05):
-        """
-        Configure the set of RGB colors to detect as "landmarks".
-    this function helps us set the target we are looking for 
-
-
-    def stop()
-    to stop the camera
-
-    def fps()
-
-    to adjust the frames per second, there's two options to have a dyanmic fps and a standardized fps 
-
-
-
-    open the camera and set the target colors first. while the robot isn't within 0.25 of the object, 
-    have it following a wall till it finds it use get_frame to confirm
-    stop the motors then stop the camera 
-'''
-
 import math, time
 import Lab2_Task2
 from HamBot.src.robot_systems import camera
@@ -43,60 +8,41 @@ def first_scan(Bot):
     # Get distances: left (90°), front (180°), right (270°)
 
 def rotate_360(bot, direction="left", check_landmarks=None):
-    """
-    Rotate robot 360 degrees while optionally checking for landmarks.
-    
-    Args:
-        bot: HamBot instance
-        direction: "left" (counter-clockwise) or "right" (clockwise)
-        check_landmarks: Function that returns True if landmark found (optional)
-    
-    Returns:
-        True if landmark was found during rotation, False otherwise
-    """
-    # Check BEFORE starting rotation - robot might already be facing landmark
 
-    
-    sign = -1 if direction == "left" else +1  # -1: CCW (left), +1: CW (right)
+    sign = -1 if direction == "left" else +1
     start_heading = bot.get_heading()
-    ROTATE_RPM = 15.0  # Slower rotation for better camera detection
+    ROTATE_RPM = 15.0
     ROTATE_MIN_RPM = 5.0
-    DT = 0.05  # Longer delay for camera processing
-    CHECK_INTERVAL = 0.1  # Additional pause before checking landmarks
+    DT = 0.05
+    CHECK_INTERVAL = 0.1
     total_rotated = 0.0
     last_heading = start_heading
-    
-    # Initial check before any rotation
-    time.sleep(CHECK_INTERVAL)  # Give camera time to process
+
+    time.sleep(CHECK_INTERVAL)
     if check_landmarks is not None and check_landmarks():
         return True
     
     while total_rotated < 360.0:
         cur_heading = bot.get_heading()
-        
-        # Calculate angular change (handles wrap-around at 360/0)
+
         delta = (cur_heading - last_heading + 180) % 360 - 180
         total_rotated += abs(delta)
         last_heading = cur_heading
-        
-        # Taper speed as we approach the target
+
         remaining = 360.0 - total_rotated
         if remaining <= 2.0:
             break
         scale = max(ROTATE_MIN_RPM/ROTATE_RPM, min(1.0, remaining/360.0))
         rpm = ROTATE_RPM * scale
-        
-        # Set motors to rotate
+
         bot.set_left_motor_speed(sign * rpm)
         bot.set_right_motor_speed(-sign * rpm)
         time.sleep(DT)
-        
-        # Stop briefly to check for landmarks (reduces motion blur)
+
         bot.set_left_motor_speed(0.0)
         bot.set_right_motor_speed(0.0)
-        time.sleep(CHECK_INTERVAL)  # Give camera time to capture/process
-        
-        # Check for landmarks while stationary
+        time.sleep(CHECK_INTERVAL)
+
         if check_landmarks is not None and check_landmarks():
             return True
     
@@ -105,10 +51,7 @@ def rotate_360(bot, direction="left", check_landmarks=None):
     return False
 
 def Landmark_checking(bot):
-    """
-    Rotate 360 degrees while checking for landmarks.
-    Returns True if landmark found, False otherwise.
-    """
+
     return rotate_360(bot, direction="left", 
                       check_landmarks=lambda: len(bot.camera.find_landmarks()) > 0)
 if __name__ == "__main__":
