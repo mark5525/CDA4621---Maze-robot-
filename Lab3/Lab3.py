@@ -45,7 +45,7 @@ def rotate_360(bot, direction="left", check_landmarks=None):
 
         if check_landmarks is not None and check_landmarks():
             # Found landmark! Now rotate an additional amount
-            extra_degrees = 0.5  # Adjust this number to turn more or less
+            extra_degrees = 5.0  # Adjust this number to turn more or less
             rotation_accumulated = 0.0
             prev_heading = bot.get_heading()
             
@@ -95,9 +95,8 @@ if __name__ == "__main__":
             Bot.set_left_motor_speed(v)
             Bot.set_right_motor_speed(v)
             time.sleep(0.03)
-            if  (Lab2_Task2.FRONT_STOP_MM <= 240 or Lab2_Task2.FRONT_STOP_MM >= 260):
-                Bot.set_left_motor_speed(0)
-                Bot.set_right_motor_speed(0)
+            Bot.set_left_motor_speed(0)
+            Bot.set_right_motor_speed(0)
     wall_side = "left"  # or "right"
     ctrl = Lab2_Task2.WallFollower(Bot, wall_side=wall_side)
 
@@ -106,14 +105,16 @@ if __name__ == "__main__":
             l_rpm, r_rpm = ctrl.step()
             Bot.set_left_motor_speed(l_rpm)
             Bot.set_right_motor_speed(r_rpm)
+            if Bot.camera.find_landmarks and (Lab2_Task2.FRONT_STOP_MM <= 240 or Lab2_Task2.FRONT_STOP_MM >= 260) :
+                break
             # explicit rotate on front block
             f = Lab2_Task2.front_mm(Bot)
             if f < Lab2_Task2.FRONT_STOP_MM:
                 Bot.set_left_motor_speed(0.0)
                 Bot.set_right_motor_speed(0.0)
-                if Bot.camera.find_landmarks(Bot):
-                    break
                 Lab2_Task2.rotate_90(Bot, wall_side)
+                if Bot.camera.find_landmarks:
+                    break
             time.sleep(Lab2_Task2.DT)
 
 
