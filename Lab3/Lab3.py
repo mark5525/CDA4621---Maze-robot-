@@ -57,7 +57,7 @@ def Landmark_checking(bot):
 if __name__ == "__main__":
     Bot = HamBot(lidar_enabled = True, camera_enabled = True)
     Bot.max_motor_speed = 60
-    Bot.camera.set_target_colors((119, 134, 54))
+    Bot.camera.set_target_colors((255, 0, 176))
     landmark_distance = 250
 
 
