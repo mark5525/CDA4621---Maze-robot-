@@ -113,9 +113,9 @@ if __name__ == "__main__":
             if f < Lab2_Task2.FRONT_STOP_MM:
                 Bot.set_left_motor_speed(0.0)
                 Bot.set_right_motor_speed(0.0)
-                Lab2_Task2.rotate_90(Bot, wall_side)
-                if Bot.camera.find_landmarks:
+                if Bot.camera.find_landmarks(Bot):
                     break
+                Lab2_Task2.rotate_90(Bot, wall_side)
             time.sleep(Lab2_Task2.DT)
 
 
