@@ -37,7 +37,7 @@ def rotate_360(bot, direction="left", check_landmarks=None):
 
         bot.set_left_motor_speed(sign * rpm)
         bot.set_right_motor_speed(-sign * rpm)
-        time.sleep(0.3)
+        time.sleep(0.5)
 
         bot.set_left_motor_speed(0.0)
         bot.set_right_motor_speed(0.0)
