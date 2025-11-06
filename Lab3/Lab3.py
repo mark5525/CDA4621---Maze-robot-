@@ -35,6 +35,9 @@ def first_scan(Bot):
     elif right_dist < WALL_THRESHOLD:
         print("Right wall detected. Following right wall.")
         return "right"
+    else:
+        print("No walls detected. Stopping.")
+        exit()
 
 def rotate_360(bot, direction="left", check_landmarks=None):
 
@@ -67,10 +70,6 @@ def rotate_360(bot, direction="left", check_landmarks=None):
         bot.set_left_motor_speed(sign * rpm)
         bot.set_right_motor_speed(-sign * rpm)
         time.sleep(DT)
-
-        bot.set_left_motor_speed(0.0)
-        bot.set_right_motor_speed(0.0)
-        time.sleep(CHECK_INTERVAL)
 
         if check_landmarks is not None and check_landmarks():
             # Found landmark! Now rotate an additional amount
@@ -140,8 +139,6 @@ if __name__ == "__main__":
             l_rpm, r_rpm = ctrl.step()
             Bot.set_left_motor_speed(l_rpm)
             Bot.set_right_motor_speed(r_rpm)
-            if Bot.camera.find_landmarks and (Lab2_Task2.FRONT_STOP_MM <= 240 or Lab2_Task2.FRONT_STOP_MM >= 260) :
-                break
             # explicit rotate on front block
             f = Lab2_Task2.front_mm(Bot)
             if f < Lab2_Task2.FRONT_STOP_MM:
