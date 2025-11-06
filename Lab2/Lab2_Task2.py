@@ -348,7 +348,7 @@ if __name__ == "__main__":
     Bot = HamBot(lidar_enabled=True, camera_enabled=False)
     Bot.max_motor_speed = 60
 
-    wall_side = "right"  # or "right"
+    wall_side = "left"  # or "right"
     ctrl = WallFollower(Bot, wall_side=wall_side)
 
     try:
