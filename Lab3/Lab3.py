@@ -2,7 +2,6 @@ import math, time
 import Lab2_Task2
 from HamBot.src.robot_systems import camera
 from HamBot.src.robot_systems.robot import HamBot
-#
 Lab2_Task2.CRUISE_RPM = 25
 def first_scan(Bot):
     scan = Bot.get_range_image()
@@ -99,7 +98,7 @@ if __name__ == "__main__":
         v = min(50, getattr(Bot, "max_motor_speed", 60))
         while True:
             scan = Bot.get_range_image()
-            window = [a for a in scan[175:180] if a and a > 0]
+            window = [a for a in scan[170:185] if a and a > 0]
             if not window:
                 break
             actual = min(window)
