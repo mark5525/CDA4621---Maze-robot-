@@ -73,7 +73,7 @@ def rotate_360(bot, direction="left", check_landmarks=None):
 
         if check_landmarks is not None and check_landmarks():
             # Found landmark! Now rotate an additional amount
-            extra_degrees = 0.6  # Adjust this number to turn more or less
+            extra_degrees = 0.0  # Adjust this number to turn more or less
             rotation_accumulated = 0.0
             prev_heading = bot.get_heading()
             
