@@ -3,6 +3,7 @@ import Lab2_Task2
 from HamBot.src.robot_systems import camera
 from HamBot.src.robot_systems.robot import HamBot
 #
+Lab2_Task2.CRUISE_RPM = 25
 def first_scan(Bot):
     scan = Bot.get_range_image()
     # Get distances: left (90°), right (270°)
