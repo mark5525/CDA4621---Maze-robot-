@@ -72,22 +72,6 @@ def rotate_360(bot, direction="left", check_landmarks=None):
         time.sleep(DT)
 
         if check_landmarks is not None and check_landmarks():
-            # Found landmark! Now rotate an additional amount
-            extra_degrees = 0.0  # Adjust this number to turn more or less
-            rotation_accumulated = 0.0
-            prev_heading = bot.get_heading()
-            
-            while rotation_accumulated < extra_degrees:
-                bot.set_left_motor_speed(sign * ROTATE_RPM)
-                bot.set_right_motor_speed(-sign * ROTATE_RPM)
-                time.sleep(DT)
-                
-                # Track how much we've rotated
-                curr_heading = bot.get_heading()
-                delta = (curr_heading - prev_heading + 180) % 360 - 180
-                rotation_accumulated += abs(delta)
-                prev_heading = curr_heading
-            
             # Stop motors
             bot.set_left_motor_speed(0.0)
             bot.set_right_motor_speed(0.0)
