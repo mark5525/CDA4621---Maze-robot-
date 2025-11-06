@@ -97,13 +97,18 @@ if __name__ == "__main__":
         target = landmark_distance
         v = min(50, getattr(Bot, "max_motor_speed", 60))
         while True:
+            # Check LIDAR distance
             scan = Bot.get_range_image()
             window = [a for a in scan[170:185] if a and a > 0]
             if not window:
                 break
             actual = min(window)
-            if actual <= target:
+            
+            # Check if we've reached target via LIDAR OR lost sight of landmark
+            landmarks = Bot.camera.find_landmarks()
+            if actual <= target or not landmarks:
                 break
+            
             Bot.set_left_motor_speed(v)
             Bot.set_right_motor_speed(v)
             time.sleep(0.03)
@@ -135,13 +140,18 @@ if __name__ == "__main__":
                     target = landmark_distance
                     v = min(50, getattr(Bot, "max_motor_speed", 60))
                     while True:
+                        # Check LIDAR distance
                         scan = Bot.get_range_image()
                         window = [a for a in scan[175:180] if a and a > 0]
                         if not window:
                             break
                         actual = min(window)
-                        if actual <= target:
+                        
+                        # Check if we've reached target via LIDAR OR lost sight of landmark
+                        landmarks = Bot.camera.find_landmarks()
+                        if actual <= target or not landmarks:
                             break
+                        
                         Bot.set_left_motor_speed(v)
                         Bot.set_right_motor_speed(v)
                         time.sleep(0.03)
