@@ -40,7 +40,7 @@ def rotate_360(bot, direction="left", check_landmarks=None):
 
     sign = -1 if direction == "left" else +1
     start_heading = bot.get_heading()
-    ROTATE_RPM = 15.0
+    ROTATE_RPM = 20.0
     ROTATE_MIN_RPM = 5.0
     DT = 0.05
     CHECK_INTERVAL = 0.1
