@@ -4,9 +4,6 @@ from collections import defaultdict
 GRID_SIZE = 5          # 5x5 grid → 25 cells
 NUM_PARTICLES = 250    # as in the task
 
-# ------------------------
-# World / Maze definition
-# ------------------------
 
 def rc_to_cell(r: int, c: int, n: int = GRID_SIZE) -> int:
 
