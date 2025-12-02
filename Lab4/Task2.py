@@ -267,6 +267,24 @@ class ParticleFilterGrid:
         print("-" * 50)
         return mode_cell, localized
 
+    def prob_front_wall(self) -> float:
+        """
+        Estimated probability that there is a wall directly in front of the robot,
+        based on current particle weights.
+        """
+        total = 0.0
+        wall_weight = 0.0
+        for p, w in zip(self.particles, self.weights):
+            cell = p['cell']
+            orient = p['orient']
+            side_idx = ORIENT_INDEX[orient]
+            N, E, S, W = self.cell_walls[cell]
+            front_wall = (N, E, S, W)[side_idx]
+            total += w
+            if front_wall == 1:
+                wall_weight += w
+        return wall_weight / total if total > 0 else 0.0
+
 
 def observe_walls_from_lidar(bot: HamBot,
                              wall_thresh_m: float = WALL_DETECT_THRESH_M) -> Dict[str, int]:
@@ -367,8 +385,15 @@ if __name__ == "__main__":
 
     try:
         for action in ACTION_SCRIPT:
+            executed_action = action
             if action == "forward":
-                move_forward_one_cell()
+                prob_wall = pf.prob_front_wall()
+                if prob_wall > 0.6:
+                    print(f"Predicted wall ahead with prob {prob_wall:.2f}, turning right instead of forward.")
+                    turn_right()
+                    executed_action = "right"
+                else:
+                    move_forward_one_cell()
             elif action == "left":
                 turn_left()
             elif action == "right":
@@ -377,8 +402,8 @@ if __name__ == "__main__":
                 raise ValueError(f"Unknown action: {action}")
 
             obs = observe_walls_from_lidar(bot)
-            print(f"Action: {action}, Observation: {obs}")
-            mode_cell, localized = pf.step(action, obs)
+            print(f"Action executed: {executed_action}, Observation: {obs}")
+            mode_cell, localized = pf.step(executed_action, obs)
             if localized:
                 print(f"*** Localization achieved in cell {mode_cell}! ***")
                 break
