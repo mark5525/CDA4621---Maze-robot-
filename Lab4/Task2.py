@@ -303,10 +303,10 @@ def observe_walls_from_lidar(bot: HamBot,
 
     # Map to world: North = left (90), East = front (180), South = right (270), West = back (0)
     return {
-        'N': is_wall_at(90),
-        'E': is_wall_at(180),
-        'S': is_wall_at(270),
-        'W': is_wall_at(0),
+        'N': is_wall_at(180),
+        'E': is_wall_at(90),
+        'S': is_wall_at(0),
+        'W': is_wall_at(270),
     }
 
 
