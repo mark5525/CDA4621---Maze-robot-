@@ -171,9 +171,10 @@ def rotate_and_collect(bot: HamBot,
                        measurements: Dict[str, float],
                        rpm: float = 6.0,
                        dt: float = 0.05,
-                       max_time_s: float = 12.0):
+                       max_time_s: float = 15.0):
     """
     Rotate in place once, collecting landmark distances as they enter view.
+    Logic based on Lab3.rotate_360 to avoid premature stopping.
     """
     start_heading = bot.get_heading(blocking=True, wait_timeout=0.5)
     if start_heading is None:
@@ -186,26 +187,29 @@ def rotate_and_collect(bot: HamBot,
 
     print("Rotating 360° to collect landmarks...")
     while total_rotated < 360.0 and (time.time() - t_start) < max_time_s and len(measurements) < 3:
-        # Spin in place
-        bot.set_left_motor_speed(-rpm)
-        bot.set_right_motor_speed(rpm)
-
-        # Collect any visible landmarks
-        new_meas = measure_landmark_distances(bot, debug=False)
-        for name, dist in new_meas.items():
-            if name not in measurements or dist < measurements[name]:
-                measurements[name] = dist
-
-        # Update rotation estimate
         cur_heading = bot.get_heading()
         if cur_heading is not None:
             delta = (cur_heading - last_heading + 180) % 360 - 180
             total_rotated += abs(delta)
             last_heading = cur_heading
 
+        remaining = 360.0 - total_rotated
+        if remaining <= 2.0:
+            break
+
+        # Slow slightly near the end for smoother stop
+        scale = max(0.3, min(1.0, remaining / 360.0))
+        rpm_scaled = rpm * scale
+        bot.set_left_motor_speed(-rpm_scaled)
+        bot.set_right_motor_speed(rpm_scaled)
+
+        new_meas = measure_landmark_distances(bot, debug=False)
+        for name, dist in new_meas.items():
+            if name not in measurements or dist < measurements[name]:
+                measurements[name] = dist
+
         time.sleep(dt)
 
-    # Stop motors
     bot.set_left_motor_speed(0.0)
     bot.set_right_motor_speed(0.0)
 
