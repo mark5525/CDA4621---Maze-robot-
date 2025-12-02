@@ -116,7 +116,7 @@ def pixel_to_lidar_index(px: int, img_width: int) -> int:
 
 
 def measure_landmark_distances(bot: HamBot,
-                               min_area: int = 500,
+                               min_area: int = 200,
                                max_range_m: float = 5.0) -> Dict[str, float]:
     """
     Detect colored landmarks and fuse with lidar to estimate range.
@@ -155,6 +155,16 @@ def measure_landmark_distances(bot: HamBot,
 def main():
     bot = HamBot(lidar_enabled=True, camera_enabled=True)
     time.sleep(1.0)  # let sensors warm up
+
+    # Configure target landmark colors (RGB) and tolerance.
+    target_colors = [
+        (255, 255, 0),   # yellow
+        (255, 0, 0),     # red
+        (0, 255, 0),     # green
+        (0, 0, 255),     # blue
+    ]
+    if getattr(bot, "camera", None):
+        bot.camera.set_target_colors(target_colors, tolerance=0.12)
 
     start_time = time.time()
     measurements: Dict[str, float] = {}
