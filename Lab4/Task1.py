@@ -22,15 +22,15 @@ from typing import Dict, Tuple
 
 from HamBot.src.robot_systems.robot import HamBot
 
-GRID_SIZE = 5            # 5 x 5 grid
-CELL_SIZE = 1.0          # 1 m per cell
+GRID_SIZE = 4            # 4 x 4 grid
+CELL_SIZE = 0.6          # 0.6 m (600 mm) per cell
 CAM_FOV_DEG = 62.0       # Approx horizontal FOV of PiCamera v2
 
 LANDMARK_POSITIONS = {
-    "yellow": (-2.0,  2.0),   # top-left (cell 1)
-    "red":    ( 2.0,  2.0),   # top-right (cell 5)
-    "green":  (-2.0, -2.0),   # bottom-left (cell 21)
-    "blue":   ( 2.0, -2.0),   # bottom-right (cell 25)
+    "orange": (-1.2,  1.2),   # top-left
+    "blue":   ( 1.2,  1.2),   # top-right
+    "green":  (-1.2, -1.2),   # bottom-left
+    "pink":   ( 1.2, -1.2),   # bottom-right
 }
 
 
@@ -43,15 +43,26 @@ def normalize_color(color: Tuple[float, float, float]) -> Tuple[float, float, fl
 
 
 def classify_landmark_by_color(color: Tuple[float, float, float]) -> str | None:
+    """
+    Classify based on nearest target color in normalized RGB space.
+    """
     r, g, b = normalize_color(color)
-    if r > 0.7 and g > 0.7 and b < 0.4:
-        return "yellow"
-    if r > 0.7 and g < 0.4 and b < 0.4:
-        return "red"
-    if r < 0.4 and g > 0.7 and b < 0.4:
-        return "green"
-    if r < 0.4 and g < 0.4 and b > 0.7:
-        return "blue"
+    targets = {
+        "orange": (1.0, 0.6, 0.2),
+        "blue":   (0.2, 0.4, 0.8),
+        "green":  (0.2, 0.8, 0.5),
+        "pink":   (0.8, 0.2, 0.4),  # magenta-ish
+    }
+    best = None
+    best_dist = 1e9
+    for name, (tr, tg, tb) in targets.items():
+        dist = (r - tr) ** 2 + (g - tg) ** 2 + (b - tb) ** 2
+        if dist < best_dist:
+            best_dist = dist
+            best = name
+    # Simple gate: require reasonably close match
+    if best_dist <= 0.25:  # tune if needed
+        return best
     return None
 
 
@@ -116,8 +127,8 @@ def pixel_to_lidar_index(px: int, img_width: int) -> int:
 
 
 def measure_landmark_distances(bot: HamBot,
-                               min_area: int = 100,
-                               max_range_m: float = 5.0,
+                               min_area: int = 80,
+                               max_range_m: float = 3.0,
                                debug: bool = False) -> Dict[str, float]:
     """
     Detect colored landmarks and fuse with lidar to estimate range.
@@ -162,13 +173,13 @@ def main():
 
     # Configure target landmark colors (RGB) and tolerance.
     target_colors = [
-        (255, 255, 0),   # yellow
-        (255, 0, 0),     # red
-        (0, 255, 0),     # green
+        (255, 165, 0),   # orange
         (0, 0, 255),     # blue
+        (0, 255, 128),   # green
+        (255, 20, 147),  # pink/magenta
     ]
     if getattr(bot, "camera", None):
-        bot.camera.set_target_colors(target_colors, tolerance=0.20)
+        bot.camera.set_target_colors(target_colors, tolerance=0.25)
 
     start_time = time.time()
     measurements: Dict[str, float] = {}
