@@ -321,6 +321,37 @@ def observe_walls_from_lidar(bot: HamBot,
     return obs
 
 
+def rotate_90(bot: HamBot, direction: str = "left"):
+    """
+    Rotate the robot by ±90° using IMU feedback.
+    direction: "left" (CCW) or "right" (CW)
+    """
+    ROTATE_RPM = 30.0
+    ROTATE_MIN_RPM = 8.0
+    DT_ROTATE = 0.05
+    target_deg = 90.0
+    sign = -1 if direction == "left" else +1  # left turn = CCW
+    start = bot.get_heading(blocking=True, wait_timeout=0.5)
+    if start is None:
+        return
+    total_rotated = 0.0
+    last_heading = start
+    while total_rotated < target_deg - 2.0:
+        cur = bot.get_heading()
+        if cur is not None:
+            delta = (cur - last_heading + 180) % 360 - 180
+            total_rotated += abs(delta)
+            last_heading = cur
+        remaining = max(0.0, target_deg - total_rotated)
+        scale = max(ROTATE_MIN_RPM / ROTATE_RPM, min(1.0, remaining / target_deg))
+        rpm = ROTATE_RPM * scale
+        bot.set_left_motor_speed(sign * rpm)
+        bot.set_right_motor_speed(-sign * rpm)
+        time.sleep(DT_ROTATE)
+    bot.set_left_motor_speed(0.0)
+    bot.set_right_motor_speed(0.0)
+
+
 if __name__ == "__main__":
     # Build the 4x4 maze map and PF
     maze_map = build_4x4_map()
@@ -346,14 +377,10 @@ if __name__ == "__main__":
         time.sleep(0.1)
 
     def turn_left():
-        bot.run_motors_for_seconds(TURN_DURATION_S, left_speed=-TURN_RPM, right_speed=TURN_RPM)
-        bot.stop_motors()
-        time.sleep(0.1)
+        rotate_90(bot, direction="left")
 
     def turn_right():
-        bot.run_motors_for_seconds(TURN_DURATION_S, left_speed=TURN_RPM, right_speed=-TURN_RPM)
-        bot.stop_motors()
-        time.sleep(0.1)
+        rotate_90(bot, direction="right")
 
     # Replace with your desired route; each action triggers PF predict/correct/resample
     ACTION_SCRIPT = ["forward", "right", "forward", "left", "forward"]
