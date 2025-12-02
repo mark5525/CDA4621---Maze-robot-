@@ -326,8 +326,8 @@ def rotate_90(bot: HamBot, direction: str = "left"):
     Rotate the robot by ±90° using IMU feedback.
     direction: "left" (CCW) or "right" (CW)
     """
-    ROTATE_RPM = 30.0
-    ROTATE_MIN_RPM = 8.0
+    ROTATE_RPM = 24.0
+    ROTATE_MIN_RPM = 6.0
     DT_ROTATE = 0.05
     target_deg = 90.0
     sign = -1 if direction == "left" else +1  # left turn = CCW
