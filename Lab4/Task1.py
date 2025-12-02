@@ -167,6 +167,49 @@ def measure_landmark_distances(bot: HamBot,
     return distances_m
 
 
+def rotate_and_collect(bot: HamBot,
+                       measurements: Dict[str, float],
+                       rpm: float = 6.0,
+                       dt: float = 0.05,
+                       max_time_s: float = 12.0):
+    """
+    Rotate in place once, collecting landmark distances as they enter view.
+    """
+    start_heading = bot.get_heading(blocking=True, wait_timeout=0.5)
+    if start_heading is None:
+        print("Cannot rotate: IMU heading unavailable.")
+        return
+
+    total_rotated = 0.0
+    last_heading = start_heading
+    t_start = time.time()
+
+    print("Rotating 360° to collect landmarks...")
+    while total_rotated < 360.0 and (time.time() - t_start) < max_time_s and len(measurements) < 3:
+        # Spin in place
+        bot.set_left_motor_speed(-rpm)
+        bot.set_right_motor_speed(rpm)
+
+        # Collect any visible landmarks
+        new_meas = measure_landmark_distances(bot, debug=False)
+        for name, dist in new_meas.items():
+            if name not in measurements or dist < measurements[name]:
+                measurements[name] = dist
+
+        # Update rotation estimate
+        cur_heading = bot.get_heading()
+        if cur_heading is not None:
+            delta = (cur_heading - last_heading + 180) % 360 - 180
+            total_rotated += abs(delta)
+            last_heading = cur_heading
+
+        time.sleep(dt)
+
+    # Stop motors
+    bot.set_left_motor_speed(0.0)
+    bot.set_right_motor_speed(0.0)
+
+
 def main():
     bot = HamBot(lidar_enabled=True, camera_enabled=True)
     time.sleep(2.0)  # let sensors warm up
@@ -185,15 +228,8 @@ def main():
     measurements: Dict[str, float] = {}
     attempts = 0
 
-    while time.time() - start_time < 6.0 and len(measurements) < 3:
-        attempts += 1
-        new_meas = measure_landmark_distances(bot, debug=(attempts <= 2))
-        for name, dist in new_meas.items():
-            if name not in measurements or dist < measurements[name]:
-                measurements[name] = dist
-        if not new_meas and attempts <= 2:
-            print("No landmarks detected this frame. Consider increasing tolerance or adjusting lighting.")
-        time.sleep(0.1)
+    # Rotate once to sweep all landmarks into view.
+    rotate_and_collect(bot, measurements, rpm=6.0, dt=0.05, max_time_s=12.0)
 
     if len(measurements) < 3:
         print("ERROR: saw fewer than 3 landmarks, cannot trilaterate.")
