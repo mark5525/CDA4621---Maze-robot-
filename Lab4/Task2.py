@@ -13,8 +13,8 @@ from typing import Dict, Tuple
 
 from HamBot.src.robot_systems.robot import HamBot
 
-GRID_SIZE = 4          # 4x4 grid → 16 cells
-NUM_PARTICLES = 160    # 10 particles per cell
+GRID_SIZE = 4  # 4x4 grid → 16 cells
+NUM_PARTICLES = 160  # 10 particles per cell
 WALL_DETECT_THRESH_M = 0.50  # meters; tweak based on your maze spacing
 
 
@@ -32,9 +32,9 @@ def build_outer_walls(n: int = GRID_SIZE) -> Dict[int, list[int]]:
     cell_walls: Dict[int, list[int]] = {}
     for r in range(n):
         for c in range(n):
-            N = 1 if r == 0     else 0
+            N = 1 if r == 0 else 0
             S = 1 if r == n - 1 else 0
-            W = 1 if c == 0     else 0
+            W = 1 if c == 0 else 0
             E = 1 if c == n - 1 else 0
             cell_id = rc_to_cell(r, c, n)
             cell_walls[cell_id] = [N, E, S, W]  # mutable: [N, E, S, W]
@@ -61,7 +61,7 @@ def build_4x4_map() -> Dict[int, Tuple[int, int, int, int]]:
      5  6  7  8
      9 10 11 12
     13 14 15 16
-    
+
     Landmarks:
     - Orange: top-left (-1.2, 1.2)
     - Blue: top-right (1.2, 1.2)
@@ -74,20 +74,20 @@ def build_4x4_map() -> Dict[int, Tuple[int, int, int, int]]:
     # Upper horizontal wall section (between row 0 and row 1, columns 1-2)
     add_horizontal_wall(walls, rc_to_cell(0, 1), rc_to_cell(1, 1))
     add_horizontal_wall(walls, rc_to_cell(0, 2), rc_to_cell(1, 2))
-    
+
     # Middle horizontal wall section (between row 1 and row 2, columns 1-3)
     add_horizontal_wall(walls, rc_to_cell(1, 1), rc_to_cell(2, 1))
     add_horizontal_wall(walls, rc_to_cell(1, 2), rc_to_cell(2, 2))
     add_horizontal_wall(walls, rc_to_cell(1, 3), rc_to_cell(2, 3))
-    
+
     # Lower horizontal wall section (between row 2 and row 3, columns 1-2)
     add_horizontal_wall(walls, rc_to_cell(2, 1), rc_to_cell(3, 1))
     add_horizontal_wall(walls, rc_to_cell(2, 2), rc_to_cell(3, 2))
-    
+
     # Left vertical wall section (between columns 0 and 1, rows 1-2)
     add_vertical_wall(walls, rc_to_cell(1, 0), rc_to_cell(1, 1))
     add_vertical_wall(walls, rc_to_cell(2, 0), rc_to_cell(2, 1))
-    
+
     # Right vertical wall section (between columns 2 and 3, rows 1-2)
     add_vertical_wall(walls, rc_to_cell(1, 2), rc_to_cell(1, 3))
     add_vertical_wall(walls, rc_to_cell(2, 2), rc_to_cell(2, 3))
@@ -134,20 +134,20 @@ class ParticleFilterGrid:
         cells = sorted(self.cell_walls.keys())
         n_cells = len(cells)
         particles_per_cell = self.n_particles // n_cells
-        
+
         particles = []
         for cell in cells:
             for _ in range(particles_per_cell):
                 orient = random.choice(ORIENTS)
                 particles.append({'cell': cell, 'orient': orient})
-        
+
         # Handle any remainder particles
         remainder = self.n_particles - len(particles)
         for i in range(remainder):
             cell = cells[i % n_cells]
             orient = random.choice(ORIENTS)
             particles.append({'cell': cell, 'orient': orient})
-        
+
         return particles
 
     def _forward_cell(self, cell: int, orient: str) -> int:
@@ -259,7 +259,7 @@ class ParticleFilterGrid:
                 row_vals.append(f"{counts.get(cell, 0):3d}")
             print(" ".join(row_vals))
         print()
-    
+
     def print_maze_walls(self):
         """Print the wall configuration for each cell."""
         print("Wall configuration (N,E,S,W for each cell):")
@@ -313,16 +313,16 @@ def observe_walls_from_lidar(bot: HamBot,
 if __name__ == "__main__":
     # Build the 4x4 maze map
     maze_map = build_4x4_map()
-    
+
     # Initialize particle filter with 160 particles
     pf = ParticleFilterGrid(maze_map, grid_size=GRID_SIZE, n_particles=NUM_PARTICLES)
-    
+
     print(f"Initialized particle filter:")
-    print(f"  Grid size: {GRID_SIZE}x{GRID_SIZE} = {GRID_SIZE**2} cells")
+    print(f"  Grid size: {GRID_SIZE}x{GRID_SIZE} = {GRID_SIZE ** 2} cells")
     print(f"  Total particles: {NUM_PARTICLES}")
-    print(f"  Particles per cell: {NUM_PARTICLES // (GRID_SIZE**2)}")
+    print(f"  Particles per cell: {NUM_PARTICLES // (GRID_SIZE ** 2)}")
     print()
-    
+
     # Print maze configuration
     pf.print_maze_walls()
 
@@ -330,10 +330,10 @@ if __name__ == "__main__":
     example_steps = [
         ('forward', {'N': 1, 'E': 0, 'S': 0, 'W': 1}),
         ('forward', {'N': 1, 'E': 1, 'S': 0, 'W': 0}),
-        ('right',   {'N': 0, 'E': 1, 'S': 1, 'W': 0}),
+        ('right', {'N': 0, 'E': 1, 'S': 1, 'W': 0}),
         ('forward', {'N': 0, 'E': 1, 'S': 1, 'W': 1}),
     ]
-    
+
     print("=== ANALYZING OBSERVATIONS ===")
     for idx, (action, obs) in enumerate(example_steps):
         print(f"\nStep {idx + 1}: Action={action}, Obs={obs}")
