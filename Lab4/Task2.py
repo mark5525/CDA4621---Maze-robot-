@@ -1,13 +1,10 @@
 """
-Task 2 — Particle Filter in the 5x5 grid (Maze 2 for physical robot).
+Task 2 — Particle Filter in the 4x4 grid.
 
-Key changes:
- - Adds an explicit Maze 2 wall map matching the provided diagram.
- - Keeps the specified sensor model (P(z|s) with 0.8/0.3 probabilities).
- - Includes a helper to derive wall observations from HamBot lidar.
-
-If you run this on the real HamBot, hook the `observe_walls_from_lidar` output
-into the particle filter step. Motion remains deterministic (perfect model).
+Modified for:
+ - 4x4 grid (16 cells)
+ - 160 particles total (10 particles per cell)
+ - Evenly distributed initialization
 """
 
 import random
@@ -16,8 +13,8 @@ from typing import Dict, Tuple
 
 from HamBot.src.robot_systems.robot import HamBot
 
-GRID_SIZE = 5          # 5x5 grid → 25 cells
-NUM_PARTICLES = 250    # as in the task
+GRID_SIZE = 4          # 4x4 grid → 16 cells
+NUM_PARTICLES = 160    # 10 particles per cell
 WALL_DETECT_THRESH_M = 0.50  # meters; tweak based on your maze spacing
 
 
@@ -31,6 +28,7 @@ def cell_to_rc(cell: int, n: int = GRID_SIZE) -> Tuple[int, int]:
 
 
 def build_outer_walls(n: int = GRID_SIZE) -> Dict[int, list[int]]:
+    """Build outer boundary walls for the grid."""
     cell_walls: Dict[int, list[int]] = {}
     for r in range(n):
         for c in range(n):
@@ -44,49 +42,28 @@ def build_outer_walls(n: int = GRID_SIZE) -> Dict[int, list[int]]:
 
 
 def add_horizontal_wall(cell_walls: Dict[int, list[int]], cell_above: int, cell_below: int):
+    """Add a horizontal wall between two vertically adjacent cells."""
     cell_walls[cell_above][2] = 1  # S
     cell_walls[cell_below][0] = 1  # N
 
 
 def add_vertical_wall(cell_walls: Dict[int, list[int]], cell_left: int, cell_right: int):
+    """Add a vertical wall between two horizontally adjacent cells."""
     cell_walls[cell_left][1] = 1  # E
     cell_walls[cell_right][3] = 1  # W
 
 
-def build_maze2_map() -> Dict[int, Tuple[int, int, int, int]]:
+def build_4x4_map() -> Dict[int, Tuple[int, int, int, int]]:
     """
-    Approximated wall map for Maze 2 (outer box + internal "C"-shape corridor).
-    Cells are numbered row-major, row 1 is top.
-    Internal walls follow the provided physical maze diagram; adjust if your
-    build differs.
+    Build wall map for 4x4 grid.
+    Modify this to match your actual maze configuration.
+    Currently only has outer walls - add internal walls as needed.
     """
     walls = build_outer_walls(GRID_SIZE)
 
-    # Internal walls (row/col based on the diagram; tweak if needed):
-    # Horizontal (upper interior) between row2 and row3, cols 2..4
-    add_horizontal_wall(walls, rc_to_cell(1, 1), rc_to_cell(2, 1))
-    add_horizontal_wall(walls, rc_to_cell(1, 2), rc_to_cell(2, 2))
-    add_horizontal_wall(walls, rc_to_cell(1, 3), rc_to_cell(2, 3))
-
-    # Horizontal (middle) between row3 and row3? Represented as between row3 and row4, cols 2..5
-    add_horizontal_wall(walls, rc_to_cell(2, 1), rc_to_cell(3, 1))
-    add_horizontal_wall(walls, rc_to_cell(2, 2), rc_to_cell(3, 2))
-    add_horizontal_wall(walls, rc_to_cell(2, 3), rc_to_cell(3, 3))
-    add_horizontal_wall(walls, rc_to_cell(2, 4), rc_to_cell(3, 4))
-
-    # Horizontal (lower interior) between row4 and row5, cols 2..4
-    add_horizontal_wall(walls, rc_to_cell(3, 1), rc_to_cell(4, 1))
-    add_horizontal_wall(walls, rc_to_cell(3, 2), rc_to_cell(4, 2))
-    add_horizontal_wall(walls, rc_to_cell(3, 3), rc_to_cell(4, 3))
-
-    # Vertical spine on the left interior (col2) connecting upper and middle
-    add_vertical_wall(walls, rc_to_cell(1, 1), rc_to_cell(1, 2))
-    add_vertical_wall(walls, rc_to_cell(2, 1), rc_to_cell(2, 2))
-    add_vertical_wall(walls, rc_to_cell(3, 1), rc_to_cell(3, 2))
-
-    # Vertical on the right interior (col4) connecting middle and lower
-    add_vertical_wall(walls, rc_to_cell(2, 3), rc_to_cell(2, 4))
-    add_vertical_wall(walls, rc_to_cell(3, 3), rc_to_cell(3, 4))
+    # Add your internal walls here. Examples:
+    # add_horizontal_wall(walls, rc_to_cell(0, 1), rc_to_cell(1, 1))
+    # add_vertical_wall(walls, rc_to_cell(1, 1), rc_to_cell(1, 2))
 
     # Freeze to tuples
     for cid in walls:
@@ -105,6 +82,7 @@ P_Z1_GIVEN_S0 = 0.3  # P(z=1 | s=0) false positive
 
 
 def side_likelihood(true_side: int, z: int) -> float:
+    """Calculate P(z | s) for a single side."""
     if z not in (0, 1):
         raise ValueError("Observation z must be 0 or 1")
     if true_side not in (0, 1):
@@ -125,16 +103,28 @@ class ParticleFilterGrid:
         self.weights = [1.0 / n_particles] * n_particles
 
     def _init_particles(self):
-        cells = list(self.cell_walls.keys())
+        """Initialize particles evenly across all cells."""
+        cells = sorted(self.cell_walls.keys())
         n_cells = len(cells)
+        particles_per_cell = self.n_particles // n_cells
+
         particles = []
-        for i in range(self.n_particles):
-            cell = cells[i % n_cells]  # roughly equal per cell
+        for cell in cells:
+            for _ in range(particles_per_cell):
+                orient = random.choice(ORIENTS)
+                particles.append({'cell': cell, 'orient': orient})
+
+        # Handle any remainder particles
+        remainder = self.n_particles - len(particles)
+        for i in range(remainder):
+            cell = cells[i % n_cells]
             orient = random.choice(ORIENTS)
             particles.append({'cell': cell, 'orient': orient})
+
         return particles
 
     def _forward_cell(self, cell: int, orient: str) -> int:
+        """Calculate the cell forward from current cell in given orientation."""
         r, c = cell_to_rc(cell, self.grid_size)
         if orient == 'N':
             r -= 1
@@ -150,6 +140,7 @@ class ParticleFilterGrid:
         return rc_to_cell(r, c, self.grid_size)
 
     def motion_update(self, action: str):
+        """Update particles based on action (left, right, forward)."""
         a = action.lower()
         for p in self.particles:
             cell, orient = p['cell'], p['orient']
@@ -167,6 +158,7 @@ class ParticleFilterGrid:
                 raise ValueError(f"Unknown action: {action}")
 
     def observation_likelihood(self, cell: int, obs: Dict[str, int]) -> float:
+        """Calculate P(observation | cell) for all four sides."""
         N, E, S, W = self.cell_walls[cell]
         true_sides = {'N': N, 'E': E, 'S': S, 'W': W}
         prob = 1.0
@@ -175,6 +167,7 @@ class ParticleFilterGrid:
         return prob
 
     def sensor_update(self, obs: Dict[str, int]):
+        """Update particle weights based on observations."""
         new_weights = []
         for p in self.particles:
             w = self.observation_likelihood(p['cell'], obs)
@@ -187,6 +180,7 @@ class ParticleFilterGrid:
             self.weights = [w / total for w in new_weights]
 
     def systematic_resample(self):
+        """Resample particles using systematic resampling."""
         N = self.n_particles
         cumulative = []
         cumsum = 0.0
@@ -213,12 +207,14 @@ class ParticleFilterGrid:
         self.weights = [1.0 / N] * N
 
     def particle_histogram(self) -> Dict[int, int]:
+        """Count particles per cell."""
         counts = defaultdict(int)
         for p in self.particles:
             counts[p['cell']] += 1
         return counts
 
     def estimate(self):
+        """Estimate current cell and check if localized."""
         counts = self.particle_histogram()
         if not counts:
             return {}, None, 0, False
@@ -227,7 +223,8 @@ class ParticleFilterGrid:
         return counts, mode_cell, mode_count, localized
 
     def print_distribution(self, counts: Dict[int, int]):
-        print("Particle counts per cell (row-wise, 1..25):")
+        """Print particle distribution as a grid."""
+        print("Particle counts per cell (row-wise):")
         for r in range(self.grid_size):
             row_vals = []
             for c in range(self.grid_size):
@@ -237,6 +234,7 @@ class ParticleFilterGrid:
         print()
 
     def step(self, action: str, obs: Dict[str, int]):
+        """Execute one full particle filter step."""
         self.motion_update(action)
         self.sensor_update(obs)
         self.systematic_resample()
@@ -255,7 +253,6 @@ def observe_walls_from_lidar(bot: HamBot,
     """
     Convert lidar scan to binary wall observations on N, E, S, W.
     Lidar frame: 180 front, 90 left, 270 right, 0 back.
-    Robot frame: front = +x (East), left = +y (North) as per heading convention.
     """
     scan = bot.get_range_image()
     if scan == -1:
@@ -275,8 +272,17 @@ def observe_walls_from_lidar(bot: HamBot,
 
 
 if __name__ == "__main__":
-    maze_map = build_maze2_map()
-    pf = ParticleFilterGrid(maze_map)
+    # Build the 4x4 maze map
+    maze_map = build_4x4_map()
+
+    # Initialize particle filter with 160 particles
+    pf = ParticleFilterGrid(maze_map, grid_size=GRID_SIZE, n_particles=NUM_PARTICLES)
+
+    print(f"Initialized particle filter:")
+    print(f"  Grid size: {GRID_SIZE}x{GRID_SIZE} = {GRID_SIZE**2} cells")
+    print(f"  Total particles: {NUM_PARTICLES}")
+    print(f"  Particles per cell: {NUM_PARTICLES // (GRID_SIZE**2)}")
+    print()
 
     # Example scripted steps (replace with live HamBot loop):
     example_steps = [
@@ -287,6 +293,7 @@ if __name__ == "__main__":
     ]
 
     for action, obs in example_steps:
+        print(f"Action: {action}, Observation: {obs}")
         mode_cell, localized = pf.step(action, obs)
         if localized:
             print(f"*** Localization achieved in cell {mode_cell}! ***")
