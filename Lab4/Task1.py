@@ -15,7 +15,7 @@ Assumptions/notes:
 If your setup has a different camera FOV or camera mounting, adjust CAM_FOV_DEG
 or add an extra mounting offset.
 """
-
+#hi
 import math
 import time
 from typing import Dict, Tuple
@@ -186,7 +186,9 @@ def rotate_and_collect(bot: HamBot,
     t_start = time.time()
 
     print("Rotating 360° to collect landmarks...")
-    while total_rotated < 360.0 and (time.time() - t_start) < max_time_s and len(measurements) < 3:
+    while total_rotated < 360.0 and (time.time() - t_start) < max_time_s:
+        if len(measurements) >= 4:
+            break
         cur_heading = bot.get_heading()
         if cur_heading is not None:
             delta = (cur_heading - last_heading + 180) % 360 - 180
