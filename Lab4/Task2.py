@@ -56,46 +56,26 @@ def add_vertical_wall(cell_walls: Dict[int, list[int]], cell_left: int, cell_rig
 
 def build_4x4_map() -> Dict[int, Tuple[int, int, int, int]]:
     """
-    Build wall map for 4x4 grid matching Physical Robot Maze 2.
-    Grid layout (cell numbers):
-     1  2  3  4
-     5  6  7  8
-     9 10 11 12
-    13 14 15 16
-    
-    Landmarks:
-    - Orange: top-left (-1.2, 1.2)
-    - Blue: top-right (1.2, 1.2)
-    - Green: bottom-left (-1.2, -1.2)
-    - Pink: bottom-right (1.2, -1.2)
+    Build wall map for 4x4 grid using explicit wall codes (N,E,S,W).
+    Codes (row-major, cells 1..16):
+      1001 | 1010 | 1010 | 1100
+      0101 | 1011 | 1010 | 0110
+      0001 | 1010 | 1110 | 1101
+      0011 | 1010 | 1010 | 0110
     """
-    walls = build_outer_walls(GRID_SIZE)
-
-    # Internal walls based on the maze diagram
-    # Upper horizontal wall section (between row 0 and row 1, columns 1-2)
-    add_horizontal_wall(walls, rc_to_cell(0, 1), rc_to_cell(1, 1))
-    add_horizontal_wall(walls, rc_to_cell(0, 2), rc_to_cell(1, 2))
-    
-    # Middle horizontal wall section (between row 1 and row 2, columns 1-3)
-    add_horizontal_wall(walls, rc_to_cell(1, 1), rc_to_cell(2, 1))
-    add_horizontal_wall(walls, rc_to_cell(1, 2), rc_to_cell(2, 2))
-    add_horizontal_wall(walls, rc_to_cell(1, 3), rc_to_cell(2, 3))
-    
-    # Lower horizontal wall section (between row 2 and row 3, columns 1-2)
-    add_horizontal_wall(walls, rc_to_cell(2, 1), rc_to_cell(3, 1))
-    add_horizontal_wall(walls, rc_to_cell(2, 2), rc_to_cell(3, 2))
-    
-    # Left vertical wall section (between columns 0 and 1, rows 1-2)
-    add_vertical_wall(walls, rc_to_cell(1, 0), rc_to_cell(1, 1))
-    add_vertical_wall(walls, rc_to_cell(2, 0), rc_to_cell(2, 1))
-    
-    # Right vertical wall section (between columns 2 and 3, rows 1-2)
-    add_vertical_wall(walls, rc_to_cell(1, 2), rc_to_cell(1, 3))
-    add_vertical_wall(walls, rc_to_cell(2, 2), rc_to_cell(2, 3))
-
-    # Freeze to tuples
-    for cid in walls:
-        walls[cid] = tuple(walls[cid])
+    codes = [
+        ["1001", "1010", "1010", "1100"],
+        ["0101", "1011", "1010", "0110"],
+        ["0001", "1010", "1110", "1101"],
+        ["0011", "1010", "1010", "0110"],
+    ]
+    walls: Dict[int, Tuple[int, int, int, int]] = {}
+    cell_id = 1
+    for row in codes:
+        for code in row:
+            # code is NESW
+            walls[cell_id] = tuple(int(ch) for ch in code)
+            cell_id += 1
     return walls
 
 
