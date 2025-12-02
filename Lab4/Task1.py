@@ -233,7 +233,7 @@ def main():
     attempts = 0
 
     # Rotate once to sweep all landmarks into view.
-    print(bot.get_heading())
+    print(f"the robot heading is %d", bot.get_heading())
     rotate_and_collect(bot, measurements, rpm=9.0, dt=0.05, max_time_s=12.0)
 
     if len(measurements) < 3:
