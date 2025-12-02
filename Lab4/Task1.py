@@ -169,7 +169,7 @@ def measure_landmark_distances(bot: HamBot,
 
 def rotate_and_collect(bot: HamBot,
                        measurements: Dict[str, float],
-                       rpm: float = 6.0,
+                       rpm: float = 9.0,
                        dt: float = 0.05,
                        max_time_s: float = 15.0):
     """
@@ -233,7 +233,8 @@ def main():
     attempts = 0
 
     # Rotate once to sweep all landmarks into view.
-    rotate_and_collect(bot, measurements, rpm=6.0, dt=0.05, max_time_s=12.0)
+    print(bot.get_heading())
+    rotate_and_collect(bot, measurements, rpm=9.0, dt=0.05, max_time_s=12.0)
 
     if len(measurements) < 3:
         print("ERROR: saw fewer than 3 landmarks, cannot trilaterate.")
