@@ -1,9 +1,30 @@
-from HamBot.src.robot_systems.robot import HamBot
+"""
+Task 1 — Trilateration with HamBot sensors.
+
+This version uses:
+ - HamBot.camera.find_landmarks() for color detection.
+ - HamBot.get_range_image() to grab a range reading toward each detected landmark.
+
+Assumptions/notes:
+ - Camera is forward-facing; horizontal FOV assumed ~62° (PiCamera v2).
+ - Lidar frame: index 180 is robot-front, 90 is left, 270 is right, 0 is back.
+ - Heading is not needed to extract the relative bearing for the landmark; we
+   derive bearing from the pixel x-offset in the image.
+ - Distances are kept in meters; lidar reports mm, so we convert.
+
+If your setup has a different camera FOV or camera mounting, adjust CAM_FOV_DEG
+or add an extra mounting offset.
+"""
+
 import math
 import time
+from typing import Dict, Tuple
+
+from HamBot.src.robot_systems.robot import HamBot
 
 GRID_SIZE = 5            # 5 x 5 grid
 CELL_SIZE = 1.0          # 1 m per cell
+CAM_FOV_DEG = 62.0       # Approx horizontal FOV of PiCamera v2
 
 LANDMARK_POSITIONS = {
     "yellow": (-2.0,  2.0),   # top-left (cell 1)
@@ -12,8 +33,8 @@ LANDMARK_POSITIONS = {
     "blue":   ( 2.0, -2.0),   # bottom-right (cell 25)
 }
 
-def normalize_color(color):
 
+def normalize_color(color: Tuple[float, float, float]) -> Tuple[float, float, float]:
     r, g, b = color
     max_c = max(r, g, b)
     if max_c > 1.5:   # likely 0..255
@@ -21,10 +42,8 @@ def normalize_color(color):
     return r, g, b
 
 
-def classify_landmark_by_color(color):
-
+def classify_landmark_by_color(color: Tuple[float, float, float]) -> str | None:
     r, g, b = normalize_color(color)
-
     if r > 0.7 and g > 0.7 and b < 0.4:
         return "yellow"
     if r > 0.7 and g < 0.4 and b < 0.4:
@@ -33,30 +52,11 @@ def classify_landmark_by_color(color):
         return "green"
     if r < 0.4 and g < 0.4 and b > 0.7:
         return "blue"
-
     return None
 
 
-def measure_landmark_distances(robot):
-
-    rec_objects = robot.rgb_camera.getRecognitionObjects()
-    distances = {}
-
-    for obj in rec_objects:
-        name = classify_landmark_by_color(obj.getColors())
-        if name is None:
-            continue
-
-        x, y, z = obj.getPosition()
-        d = math.sqrt(x * x + y * y + z * z)
-
-        if name not in distances or d < distances[name]:
-            distances[name] = d
-
-    return distances
-
-def trilaterate_position(landmark_positions, measurements):
-
+def trilaterate_position(landmark_positions: Dict[str, Tuple[float, float]],
+                         measurements: Dict[str, float]) -> Tuple[float, float]:
     names = [n for n in measurements.keys() if n in landmark_positions]
     if len(names) < 3:
         raise ValueError("Need at least 3 landmarks for trilateration")
@@ -66,7 +66,6 @@ def trilaterate_position(landmark_positions, measurements):
     r0 = measurements[ref]
 
     A11 = A12 = A22 = b1 = b2 = 0.0
-
     for name in names[1:]:
         xi, yi = landmark_positions[name]
         ri = measurements[name]
@@ -87,39 +86,84 @@ def trilaterate_position(landmark_positions, measurements):
 
     x_est = ( b1 * A22 - b2 * A12) / det
     y_est = (-b1 * A12 + b2 * A11) / det
-
     return x_est, y_est
 
-def position_to_cell_index(x, y, grid_size=GRID_SIZE, cell_size=CELL_SIZE):
 
+def position_to_cell_index(x: float, y: float,
+                           grid_size: int = GRID_SIZE,
+                           cell_size: float = CELL_SIZE) -> Tuple[int, int, int]:
     grid_center = (grid_size - 1) / 2.0  # e.g., 2 for 5x5
-
     col = int(round(x / cell_size + grid_center))      # 0..4
     row = int(round(grid_center - y / cell_size))      # 0..4 (y up)
 
     col = max(0, min(grid_size - 1, col))
     row = max(0, min(grid_size - 1, row))
-
     cell_index = row * grid_size + col + 1
     return cell_index, row, col
 
-def main():
-    bot = HamBot(lidar_enabled=False, camera_enabled=True)
 
-    time.sleep(1.0)
+def pixel_to_lidar_index(px: int, img_width: int) -> int:
+    """
+    Map landmark pixel x-position to a lidar bearing index.
+    Camera frame: x=0 is left; x=width is right.
+    Lidar frame: 180 = forward, 90 = left, 270 = right.
+    """
+    if img_width <= 0:
+        return 180
+    offset_deg = ((px / img_width) - 0.5) * CAM_FOV_DEG  # left is negative
+    lidar_angle = int(round((180 + offset_deg) % 360))
+    return lidar_angle
+
+
+def measure_landmark_distances(bot: HamBot,
+                               min_area: int = 500,
+                               max_range_m: float = 5.0) -> Dict[str, float]:
+    """
+    Detect colored landmarks and fuse with lidar to estimate range.
+    Returns a dict: {landmark_name: distance_m}.
+    """
+    cam = getattr(bot, "camera", None)
+    if cam is None:
+        print("Camera not available on HamBot object.")
+        return {}
+
+    scan = bot.get_range_image()
+    frame = cam.get_frame(copy=False)
+    detections = cam.find_landmarks(min_area=min_area)
+
+    distances_m: Dict[str, float] = {}
+    if frame is None or scan == -1 or not detections:
+        return distances_m
+
+    img_h, img_w = frame.shape[:2]
+    for lm in detections:
+        name = classify_landmark_by_color((lm.r, lm.g, lm.b))
+        if not name:
+            continue
+        lidar_idx = pixel_to_lidar_index(lm.x, img_w)
+        raw_mm = scan[lidar_idx] if 0 <= lidar_idx < len(scan) else -1
+        if raw_mm is None or raw_mm <= 0:
+            continue
+        dist_m = raw_mm / 1000.0
+        if dist_m > max_range_m:
+            continue
+        if name not in distances_m or dist_m < distances_m[name]:
+            distances_m[name] = dist_m
+    return distances_m
+
+
+def main():
+    bot = HamBot(lidar_enabled=True, camera_enabled=True)
+    time.sleep(1.0)  # let sensors warm up
 
     start_time = time.time()
-    measurements = {}
+    measurements: Dict[str, float] = {}
 
-    while time.time() - start_time < 5.0 and len(measurements) < 3:
+    while time.time() - start_time < 6.0 and len(measurements) < 3:
         new_meas = measure_landmark_distances(bot)
-        # Merge (keep any new landmarks we see)
         for name, dist in new_meas.items():
-            # Keep the closest distance we have for each landmark
             if name not in measurements or dist < measurements[name]:
                 measurements[name] = dist
-
-        # Small delay so we don't hammer the camera
         time.sleep(0.1)
 
     if len(measurements) < 3:
@@ -131,7 +175,6 @@ def main():
     for name, d in measurements.items():
         print(f"  {name}: {d:.3f}")
 
-    # Trilateration: compute (x, y)
     x_est, y_est = trilaterate_position(LANDMARK_POSITIONS, measurements)
     cell_index, row, col = position_to_cell_index(x_est, y_est)
 
@@ -139,11 +182,9 @@ def main():
     print(f"Estimated position: x = {x_est:.3f} m, y = {y_est:.3f} m")
     print(f"Estimated grid cell index: {cell_index} (row={row}, col={col})")
 
-    # Stop the robot (we didn't move, but this is safe)
     bot.set_left_motor_speed(0.0)
     bot.set_right_motor_speed(0.0)
 
 
 if __name__ == "__main__":
     main()
-
