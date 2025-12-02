@@ -186,9 +186,8 @@ def rotate_and_collect(bot: HamBot,
     t_start = time.time()
 
     print("Rotating 360° to collect landmarks...")
-    while total_rotated < 360.0 and (time.time() - t_start) < max_time_s:
-        if len(measurements) >= 4:
-            break
+    while total_rotated < 360.0:
+
         cur_heading = bot.get_heading()
         if cur_heading is not None:
             delta = (cur_heading - last_heading + 180) % 360 - 180
