@@ -116,8 +116,9 @@ def pixel_to_lidar_index(px: int, img_width: int) -> int:
 
 
 def measure_landmark_distances(bot: HamBot,
-                               min_area: int = 200,
-                               max_range_m: float = 5.0) -> Dict[str, float]:
+                               min_area: int = 100,
+                               max_range_m: float = 5.0,
+                               debug: bool = False) -> Dict[str, float]:
     """
     Detect colored landmarks and fuse with lidar to estimate range.
     Returns a dict: {landmark_name: distance_m}.
@@ -149,12 +150,15 @@ def measure_landmark_distances(bot: HamBot,
             continue
         if name not in distances_m or dist_m < distances_m[name]:
             distances_m[name] = dist_m
+        if debug:
+            print(f"Detected {name} at pixel x={lm.x}, rgb=({lm.r},{lm.g},{lm.b}), "
+                  f"lidar_idx={lidar_idx}, dist={dist_m:.2f}m")
     return distances_m
 
 
 def main():
     bot = HamBot(lidar_enabled=True, camera_enabled=True)
-    time.sleep(1.0)  # let sensors warm up
+    time.sleep(2.0)  # let sensors warm up
 
     # Configure target landmark colors (RGB) and tolerance.
     target_colors = [
@@ -164,16 +168,20 @@ def main():
         (0, 0, 255),     # blue
     ]
     if getattr(bot, "camera", None):
-        bot.camera.set_target_colors(target_colors, tolerance=0.12)
+        bot.camera.set_target_colors(target_colors, tolerance=0.20)
 
     start_time = time.time()
     measurements: Dict[str, float] = {}
+    attempts = 0
 
     while time.time() - start_time < 6.0 and len(measurements) < 3:
-        new_meas = measure_landmark_distances(bot)
+        attempts += 1
+        new_meas = measure_landmark_distances(bot, debug=(attempts <= 2))
         for name, dist in new_meas.items():
             if name not in measurements or dist < measurements[name]:
                 measurements[name] = dist
+        if not new_meas and attempts <= 2:
+            print("No landmarks detected this frame. Consider increasing tolerance or adjusting lighting.")
         time.sleep(0.1)
 
     if len(measurements) < 3:
