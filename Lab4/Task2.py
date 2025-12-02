@@ -291,64 +291,88 @@ def observe_walls_from_lidar(bot: HamBot,
                              wall_thresh_m: float = WALL_DETECT_THRESH_M) -> Dict[str, int]:
     """
     Convert lidar scan to binary wall observations on N, E, S, W.
-    Lidar frame: 180 front, 90 left, 270 right, 0 back.
+    Robot-frame angles when heading=0 (East): front=270, left=180, right=0, back=90.
+    Rotate into global N/E/S/W using IMU heading (deg from East).
     """
     scan = bot.get_range_image()
     if scan == -1:
         return {'N': 0, 'E': 0, 'S': 0, 'W': 0}
+    heading = bot.get_heading()
+    heading_idx = 0 if heading is None else int(round(heading / 90.0)) % 4
 
     def is_wall_at(angle_deg: int) -> int:
         d_mm = scan[angle_deg] if 0 <= angle_deg < len(scan) else -1
         return 1 if (d_mm > 0 and d_mm / 1000.0 <= wall_thresh_m) else 0
 
-    # Map to world: North = left (90), East = front (180), South = right (270), West = back (0)
-    return {
-        'N': is_wall_at(90),
-        'E': is_wall_at(180),
-        'S': is_wall_at(270),
-        'W': is_wall_at(0),
-    }
+    front = is_wall_at(270)
+    left = is_wall_at(180)
+    right = is_wall_at(0)
+    back = is_wall_at(90)
+
+    if heading_idx == 0:   # facing East
+        obs = {'N': left, 'E': front, 'S': right, 'W': back}
+    elif heading_idx == 1:  # facing North
+        obs = {'N': front, 'E': right, 'S': back, 'W': left}
+    elif heading_idx == 2:  # facing West
+        obs = {'N': right, 'E': back, 'S': left, 'W': front}
+    else:                   # facing South
+        obs = {'N': back, 'E': left, 'S': front, 'W': right}
+    return obs
 
 
 if __name__ == "__main__":
-    # Build the 4x4 maze map
+    # Build the 4x4 maze map and PF
     maze_map = build_4x4_map()
-    
-    # Initialize particle filter with 160 particles
     pf = ParticleFilterGrid(maze_map, grid_size=GRID_SIZE, n_particles=NUM_PARTICLES)
-    
+
     print(f"Initialized particle filter:")
     print(f"  Grid size: {GRID_SIZE}x{GRID_SIZE} = {GRID_SIZE**2} cells")
     print(f"  Total particles: {NUM_PARTICLES}")
     print(f"  Particles per cell: {NUM_PARTICLES // (GRID_SIZE**2)}")
     print()
-    
-    # Print maze configuration
     pf.print_maze_walls()
 
-    # Example scripted steps (replace with live HamBot loop):
-    example_steps = [
-        ('forward', {'N': 1, 'E': 0, 'S': 0, 'W': 1}),
-        ('forward', {'N': 1, 'E': 1, 'S': 0, 'W': 0}),
-        ('right',   {'N': 0, 'E': 1, 'S': 1, 'W': 0}),
-        ('forward', {'N': 0, 'E': 1, 'S': 1, 'W': 1}),
-    ]
-    
-    print("=== ANALYZING OBSERVATIONS ===")
-    for idx, (action, obs) in enumerate(example_steps):
-        print(f"\nStep {idx + 1}: Action={action}, Obs={obs}")
-        print("Cells matching this observation:")
-        for cell in sorted(maze_map.keys()):
-            N, E, S, W = maze_map[cell]
-            true_obs = {'N': N, 'E': E, 'S': S, 'W': W}
-            if true_obs == obs:
-                r, c = cell_to_rc(cell)
-                print(f"  Cell {cell} (row={r}, col={c}): {true_obs}")
-    print("\n" + "=" * 50 + "\n")
+    # --- Live robot loop: tune these values to your robot ---
+    bot = HamBot(lidar_enabled=True, camera_enabled=False)
+    CELL_DURATION_S = 1.2   # seconds to move ~1 cell forward
+    DRIVE_RPM = 20.0
+    TURN_DURATION_S = 0.9   # seconds to turn ~90°
+    TURN_RPM = 15.0
 
-    for action, obs in example_steps:
-        print(f"Action: {action}, Observation: {obs}")
-        mode_cell, localized = pf.step(action, obs)
-        if localized:
-            print(f"*** Localization achieved in cell {mode_cell}! ***")
-            break
+    def move_forward_one_cell():
+        bot.run_motors_for_seconds(CELL_DURATION_S, left_speed=DRIVE_RPM, right_speed=DRIVE_RPM)
+        bot.stop_motors()
+        time.sleep(0.1)
+
+    def turn_left():
+        bot.run_motors_for_seconds(TURN_DURATION_S, left_speed=-TURN_RPM, right_speed=TURN_RPM)
+        bot.stop_motors()
+        time.sleep(0.1)
+
+    def turn_right():
+        bot.run_motors_for_seconds(TURN_DURATION_S, left_speed=TURN_RPM, right_speed=-TURN_RPM)
+        bot.stop_motors()
+        time.sleep(0.1)
+
+    # Replace with your desired route; each action triggers PF predict/correct/resample
+    ACTION_SCRIPT = ["forward", "right", "forward", "left", "forward"]
+
+    try:
+        for action in ACTION_SCRIPT:
+            if action == "forward":
+                move_forward_one_cell()
+            elif action == "left":
+                turn_left()
+            elif action == "right":
+                turn_right()
+            else:
+                raise ValueError(f"Unknown action: {action}")
+
+            obs = observe_walls_from_lidar(bot)
+            print(f"Action: {action}, Observation: {obs}")
+            mode_cell, localized = pf.step(action, obs)
+            if localized:
+                print(f"*** Localization achieved in cell {mode_cell}! ***")
+                break
+    finally:
+        bot.stop_motors()
