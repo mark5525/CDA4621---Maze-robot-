@@ -335,10 +335,10 @@ if __name__ == "__main__":
 
     # --- Live robot loop: tune these values to your robot ---
     bot = HamBot(lidar_enabled=True, camera_enabled=False)
-    CELL_DURATION_S = 1.6   # seconds to move ~1 cell forward (increase if still short)
-    DRIVE_RPM = 40.0        # motor clamp is ±50 RPM in robot.py
-    TURN_DURATION_S = 0.9   # seconds to turn ~90°
-    TURN_RPM = 15.0
+    CELL_DURATION_S = 1.9   # seconds to move ~1 cell forward (increase if still short)
+    DRIVE_RPM = 45.0        # motor clamp is ±50 RPM in robot.py
+    TURN_DURATION_S = 1.2   # seconds to turn ~90° (tune for exact 90)
+    TURN_RPM = 40.0
 
     def move_forward_one_cell():
         bot.run_motors_for_seconds(CELL_DURATION_S, left_speed=DRIVE_RPM, right_speed=DRIVE_RPM)
