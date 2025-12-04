@@ -20,7 +20,7 @@ from HamBot.src.robot_systems.robot import HamBot
 
 # ============== GRID CONFIG ==============
 GRID_SIZE = 4          # 4x4 grid → 16 cells
-NUM_PARTICLES = 160    # 10 particles per cell
+NUM_PARTICLES = 250    # 10 particles per cell
 
 # ============== LIDAR CONFIG ==============
 LIDAR_MM_TO_M = 1.0 / 1000.0
