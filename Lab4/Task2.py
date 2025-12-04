@@ -85,8 +85,11 @@ ORIENT_INDEX = {'N': 0, 'E': 1, 'S': 2, 'W': 3}
 LEFT_TURN = {'N': 'W', 'W': 'S', 'S': 'E', 'E': 'N'}
 RIGHT_TURN = {'N': 'E', 'E': 'S', 'S': 'W', 'W': 'N'}
 
+# Sensor model from lab spec:
+# p(z=0 | s=0) = 0.6,  p(z=1 | s=0) = 0.4
+# p(z=1 | s=1) = 0.8,  p(z=0 | s=1) = 0.2
 P_Z1_GIVEN_S1 = 0.8  # P(z=1 | s=1) observed wall when wall truly present
-P_Z1_GIVEN_S0 = 0.3  # P(z=1 | s=0) false positive
+P_Z1_GIVEN_S0 = 0.4  # P(z=1 | s=0) false positive (was 0.3, fixed to 0.4)
 
 
 def side_likelihood(true_side: int, z: int) -> float:
@@ -290,8 +293,8 @@ def observe_walls_from_lidar(bot: HamBot,
                              wall_thresh_m: float = WALL_DETECT_THRESH_M) -> Dict[str, int]:
     """
     Convert lidar scan to binary wall observations on N, E, S, W.
-    Robot-frame angles when heading=0 (East): front=270, left=180, right=0, back=90.
-    Rotate into global N/E/S/W using IMU heading (deg from East).
+    HamBot LIDAR angles: front=180, left=90, right=270, back=0.
+    Rotate into global N/E/S/W using IMU heading.
     """
     scan = bot.get_range_image()
     if scan == -1:
@@ -299,15 +302,21 @@ def observe_walls_from_lidar(bot: HamBot,
     heading = bot.get_heading()
     heading_idx = 0 if heading is None else int(round(heading / 90.0)) % 4
 
-    def is_wall_at(angle_deg: int) -> int:
-        d_mm = scan[angle_deg] if 0 <= angle_deg < len(scan) else -1
-        return 1 if (d_mm > 0 and d_mm / 1000.0 <= wall_thresh_m) else 0
+    def is_wall_at_range(start: int, end: int) -> int:
+        """Check if wall detected in angle range, using average of valid readings."""
+        readings = [scan[i] for i in range(start, end) if 0 <= i < len(scan) and scan[i] and scan[i] > 0]
+        if not readings:
+            return 0
+        avg_mm = sum(readings) / len(readings)
+        return 1 if (avg_mm / 1000.0 <= wall_thresh_m) else 0
 
-    front = is_wall_at(270)
-    left = is_wall_at(180)
-    right = is_wall_at(0)
-    back = is_wall_at(90)
+    # HamBot LIDAR: front=180, left=90, right=270, back=0
+    front = is_wall_at_range(175, 185)
+    left = is_wall_at_range(85, 95)
+    right = is_wall_at_range(265, 275)
+    back = is_wall_at_range(0, 10) or is_wall_at_range(350, 360)
 
+    # Map robot-relative observations to global N/E/S/W based on heading
     if heading_idx == 0:   # facing East
         obs = {'N': left, 'E': front, 'S': right, 'W': back}
     elif heading_idx == 1:  # facing North
@@ -364,15 +373,30 @@ if __name__ == "__main__":
 
     # --- Live robot loop: tune these values to your robot ---
     bot = HamBot(lidar_enabled=True, camera_enabled=False)
-    CELL_DURATION_S = 1.9   # seconds to move ~1 cell forward (increase if still short)
-    DRIVE_RPM = 45.0        # motor clamp is ±50 RPM in robot.py
-    TURN_DURATION_S = 1.2   # seconds to turn ~90° (tune for exact 90)
-    TURN_RPM = 40.0
+    bot.max_motor_speed = 60
+    DRIVE_RPM = 30.0        # forward driving speed
+    CELL_MOVE_TIME = 2.0    # max time to move one cell (seconds)
+    FRONT_STOP_MM = 250     # stop when front obstacle is this close (mm)
+    DT = 0.03               # control loop timestep
 
     def move_forward_one_cell():
-        bot.run_motors_for_seconds(CELL_DURATION_S, left_speed=DRIVE_RPM, right_speed=DRIVE_RPM)
-        bot.stop_motors()
-        time.sleep(0.1)
+        """Move forward one cell using LIDAR feedback to avoid walls."""
+        start_time = time.time()
+        while time.time() - start_time < CELL_MOVE_TIME:
+            scan = bot.get_range_image()
+            if scan != -1:
+                # Check front distance (around 180 degrees)
+                front_window = [d for d in scan[175:185] if d and d > 0]
+                if front_window:
+                    front_dist = min(front_window)
+                    if front_dist <= FRONT_STOP_MM:
+                        break  # Wall ahead, stop
+            bot.set_left_motor_speed(DRIVE_RPM)
+            bot.set_right_motor_speed(DRIVE_RPM)
+            time.sleep(DT)
+        bot.set_left_motor_speed(0.0)
+        bot.set_right_motor_speed(0.0)
+        time.sleep(0.2)  # Let robot settle
 
     def turn_left():
         rotate_90(bot, direction="left")
@@ -408,4 +432,5 @@ if __name__ == "__main__":
                 print(f"*** Localization achieved in cell {mode_cell}! ***")
                 break
     finally:
-        bot.stop_motors()
+        bot.set_left_motor_speed(0.0)
+        bot.set_right_motor_speed(0.0)
