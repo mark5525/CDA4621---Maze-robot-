@@ -40,7 +40,7 @@ CTRL_DT       = 0.05
 TURN_RPM      = 25
 TURN_TIME_S   = 1.25  
 
-RAD_PER_CELL  = 9.0   # increased for 60cm cells (was 6.0)
+RAD_PER_CELL  = 10   # tuned for 60cm cells
 MAX_FWD_TIME_S = 8.0  # more time to complete longer distance
 
 # Drift correction (encoders)
@@ -286,14 +286,82 @@ def mode_cell_and_fraction(counts):
 
 #AUTONOMOUS DRIVING
 
+# Turn tuning
+TURN_TOLERANCE_DEG = 5.0   # degrees tolerance for target heading
+TURN_TIMEOUT_S = 4.0       # max time to complete turn
+
+def normalize_angle(angle):
+    """Normalize angle to 0-360 range."""
+    while angle < 0:
+        angle += 360
+    while angle >= 360:
+        angle -= 360
+    return angle
+
+def angle_diff(target, current):
+    """Shortest signed difference between two angles."""
+    diff = target - current
+    while diff > 180:
+        diff -= 360
+    while diff < -180:
+        diff += 360
+    return diff
+
 def execute_turn(robot, cmd):
+    """Execute 90-degree turn using IMU heading feedback."""
+    # Get current heading
+    start_heading = robot.get_heading(fresh_within=0.5, blocking=True, wait_timeout=1.0)
+    if start_heading is None:
+        # Fallback to time-based if IMU unavailable
+        print("WARN: IMU unavailable, using time-based turn")
+        if cmd == "R":
+            robot.set_left_motor_speed(TURN_RPM)
+            robot.set_right_motor_speed(-TURN_RPM)
+        else:
+            robot.set_left_motor_speed(-TURN_RPM)
+            robot.set_right_motor_speed(TURN_RPM)
+        time.sleep(TURN_TIME_S)
+        robot.stop_motors()
+        time.sleep(0.2)
+        robot.reset_encoders()
+        time.sleep(0.1)
+        return
+    
+    # Calculate target heading (R = -90°, L = +90° in IMU convention)
+    if cmd == "R":
+        target_heading = normalize_angle(start_heading - 90)
+    else:
+        target_heading = normalize_angle(start_heading + 90)
+    
+    # Start turning
     if cmd == "R":
         robot.set_left_motor_speed(TURN_RPM)
         robot.set_right_motor_speed(-TURN_RPM)
     else:
         robot.set_left_motor_speed(-TURN_RPM)
         robot.set_right_motor_speed(TURN_RPM)
-    time.sleep(TURN_TIME_S)
+    
+    start_time = time.time()
+    
+    while True:
+        # Check timeout
+        if time.time() - start_time > TURN_TIMEOUT_S:
+            print("WARN: turn timeout")
+            break
+        
+        # Get current heading
+        current_heading = robot.get_heading(fresh_within=0.2, blocking=True, wait_timeout=0.5)
+        if current_heading is None:
+            time.sleep(0.05)
+            continue
+        
+        # Check if we've reached target
+        diff = abs(angle_diff(target_heading, current_heading))
+        if diff <= TURN_TOLERANCE_DEG:
+            break
+        
+        time.sleep(0.02)
+    
     robot.stop_motors()
     time.sleep(0.2)
     robot.reset_encoders()
