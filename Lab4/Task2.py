@@ -23,7 +23,7 @@ SECTOR_HALF_WIDTH = 8  # degrees around center ray
 WALL_OBS_THRESH_M = 0.55  # slightly increased for 60cm cells  
 
 #driving safety thresholds 
-FRONT_STOP_M         = 0.35   # increased for more stopping distance
+FRONT_STOP_M         = 0.30   # increased for more stopping distance
 FRONT_DIAG_ENTER_M   = 0.42
 FRONT_DIAG_EXIT_M    = 0.48
 FRONT_DIAG_STOP_M    = 0.25
