@@ -422,45 +422,69 @@ def execute_turn(robot: HamBot, cmd: str):
 
 def do_forward_one_cell(robot: HamBot):
     """
-    Move forward one cell using simple LIDAR-based control.
-    Stops when front obstacle is within FRONT_STOP_M or after timeout.
+    Move forward one cell using encoder feedback and LIDAR safety.
     """
-    MOVE_TIME_S = 2.5      # Time to move one cell
-    DRIVE_SPEED = 30.0     # RPM for forward movement
+    # Reset encoders at start
+    robot.reset_encoders()
     
     start_time = time.time()
     aborted_reason = None
-    
-    print(f"  Moving forward (max {MOVE_TIME_S}s)...")
-    
-    while time.time() - start_time < MOVE_TIME_S:
+
+    while time.time() - start_time < MAX_FWD_TIME_S:
+        # Check encoder progress
+        enc = robot.get_encoder_readings()
+        avg_rad = (abs(enc[0]) + abs(enc[1])) / 2.0
+        
+        # If we've traveled enough radians for one cell, stop
+        if avg_rad >= RAD_PER_CELL:
+            print(f"  Reached target distance ({avg_rad:.2f} rad)")
+            break
+
         scan = robot.get_range_image()
         if scan == -1:
-            print("  WARN: LIDAR unavailable.")
+            print("  WARN: LIDAR unavailable during forward.")
             aborted_reason = "lidar"
             break
-        
-        # Check front distance
+
         d_front = median_sector(scan, 180)
-        
+        d_left = median_sector(scan, 90)
+        d_right = median_sector(scan, 270)
+
+        # Emergency stop: front wall
         if d_front is not None and d_front <= FRONT_STOP_M:
-            print(f"  Stopped: front wall at {d_front:.2f}m")
+            print(f"  STOP: front wall at {d_front:.2f}m")
             aborted_reason = "front"
             break
-        
-        # Simple forward movement
-        robot.set_left_motor_speed(DRIVE_SPEED)
-        robot.set_right_motor_speed(DRIVE_SPEED)
+
+        # Speed ramp
+        t = time.time() - start_time
+        ramp_frac = min(1.0, t / RAMP_TIME_S)
+        base = max(MIN_RAMP_RPM, FWD_RPM * ramp_frac)
+
+        # Side centering correction
+        side_corr = 0.0
+        if d_left is not None and d_right is not None:
+            side_err = d_left - d_right
+            side_corr = SIDE_KP * side_err
+
+        # Drift correction using encoders
+        drift_err = enc[0] - enc[1]
+        drift_corr = ENC_KP * drift_err
+
+        left_spd = base - side_corr - drift_corr
+        right_spd = base + side_corr + drift_corr
+
+        robot.set_left_motor_speed(left_spd)
+        robot.set_right_motor_speed(right_spd)
+
         time.sleep(CTRL_DT)
-    
-    # Stop motors
-    robot.set_left_motor_speed(0.0)
-    robot.set_right_motor_speed(0.0)
-    time.sleep(0.3)
-    
+
+    robot.stop_motors()
+    time.sleep(0.2)
+
     if aborted_reason is not None:
         return False, aborted_reason
-    
+
     return True, "ok"
 
 
