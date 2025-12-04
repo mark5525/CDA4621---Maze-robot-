@@ -236,11 +236,11 @@ def get_wall_observation(robot: HamBot, debug: bool = True):
     d_back = median_sector(scan, 0)
 
     if debug:
+        def fmt(v):
+            return f"{v:.2f}" if v is not None else "N/A"
         print(f"  [DEBUG] Heading: {heading:.1f}° → Orient: {orient}")
-        print(f"  [DEBUG] Distances (m): front={d_front:.2f if d_front else 'N/A'}, "
-              f"left={d_left:.2f if d_left else 'N/A'}, "
-              f"right={d_right:.2f if d_right else 'N/A'}, "
-              f"back={d_back:.2f if d_back else 'N/A'}")
+        print(f"  [DEBUG] Distances (m): front={fmt(d_front)}, "
+              f"left={fmt(d_left)}, right={fmt(d_right)}, back={fmt(d_back)}")
 
     def is_wall(d):
         return 1 if (d is not None and d <= WALL_DETECT_THRESH_M) else 0
