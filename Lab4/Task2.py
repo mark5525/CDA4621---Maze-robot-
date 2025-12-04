@@ -20,7 +20,7 @@ from HamBot.src.robot_systems.robot import HamBot
 
 # ============== GRID CONFIG ==============
 GRID_SIZE = 4          # 4x4 grid → 16 cells
-NUM_PARTICLES = 250    # 10 particles per cell
+NUM_PARTICLES = 160    # 10 particles per cell
 
 # ============== LIDAR CONFIG ==============
 LIDAR_MM_TO_M = 1.0 / 1000.0
@@ -64,25 +64,51 @@ STABLE_CONV_STEPS = 2
 # ============== MAZE MAP ==============
 def build_4x4_map() -> Dict[int, Tuple[int, int, int, int]]:
     """
-    Build wall map for 4x4 grid using explicit wall codes (N,E,S,W).
+    Build wall map for 4x4 grid based on Image 2.
     Grid layout (cell numbers):
      1  2  3  4
      5  6  7  8
      9 10 11 12
     13 14 15 16
+    
+    Each cell is 60cm x 60cm.
+    Walls: Outer boundary + internal walls on left and right sides.
+    
+    Looking at Image 2:
+    - Full outer boundary
+    - Left vertical wall between col 0-1 for rows 1-2 (cells 5,9 have E wall; cells 6,10 have W wall)
+    - Right vertical wall between col 2-3 for rows 1-2 (cells 7,11 have E wall; cells 8,12 have W wall)
     """
-    codes = [
-        ["1001", "1010", "1010", "1100"],
-        ["0101", "1011", "1010", "0110"],
-        ["0001", "1010", "1110", "1101"],
-        ["0011", "1010", "1010", "0110"],
-    ]
     walls: Dict[int, Tuple[int, int, int, int]] = {}
-    cell_id = 1
-    for row in codes:
-        for code in row:
-            walls[cell_id] = tuple(int(ch) for ch in code)
-            cell_id += 1
+    n = GRID_SIZE  # 4
+    
+    for r in range(n):
+        for c in range(n):
+            cell_id = r * n + c + 1
+            # Start with outer boundary
+            N = 1 if r == 0 else 0         # Top row has North wall
+            S = 1 if r == n - 1 else 0     # Bottom row has South wall
+            W = 1 if c == 0 else 0         # Left column has West wall
+            E = 1 if c == n - 1 else 0     # Right column has East wall
+            walls[cell_id] = [N, E, S, W]  # Use list for mutability
+    
+    # Add internal walls based on Image 2
+    # Left vertical wall (between col 0 and col 1, rows 1-2)
+    walls[5][1] = 1   # Cell 5: add East wall
+    walls[6][3] = 1   # Cell 6: add West wall
+    walls[9][1] = 1   # Cell 9: add East wall
+    walls[10][3] = 1  # Cell 10: add West wall
+    
+    # Right vertical wall (between col 2 and col 3, rows 1-2)
+    walls[7][1] = 1   # Cell 7: add East wall
+    walls[8][3] = 1   # Cell 8: add West wall
+    walls[11][1] = 1  # Cell 11: add East wall
+    walls[12][3] = 1  # Cell 12: add West wall
+    
+    # Convert to tuples
+    for cell_id in walls:
+        walls[cell_id] = tuple(walls[cell_id])
+    
     return walls
 
 
@@ -192,7 +218,7 @@ def heading_to_orient(heading_deg) -> str:
     return best[1]
 
 
-def get_wall_observation(robot: HamBot):
+def get_wall_observation(robot: HamBot, debug: bool = True):
     """Get wall observations in global N/E/S/W coordinates."""
     scan = robot.get_range_image()
     if scan == -1:
@@ -208,6 +234,13 @@ def get_wall_observation(robot: HamBot):
     d_right = median_sector(scan, 270)
     d_left = median_sector(scan, 90)
     d_back = median_sector(scan, 0)
+
+    if debug:
+        print(f"  [DEBUG] Heading: {heading:.1f}° → Orient: {orient}")
+        print(f"  [DEBUG] Distances (m): front={d_front:.2f if d_front else 'N/A'}, "
+              f"left={d_left:.2f if d_left else 'N/A'}, "
+              f"right={d_right:.2f if d_right else 'N/A'}, "
+              f"back={d_back:.2f if d_back else 'N/A'}")
 
     def is_wall(d):
         return 1 if (d is not None and d <= WALL_DETECT_THRESH_M) else 0
@@ -229,14 +262,25 @@ def get_wall_observation(robot: HamBot):
     else:  # "W"
         z_global = {"W": z_robot["front"], "N": z_robot["right"], "E": z_robot["back"], "S": z_robot["left"]}
 
+    if debug:
+        print(f"  [DEBUG] Robot obs: {z_robot}")
+        print(f"  [DEBUG] Global obs (N,E,S,W): {z_global['N']},{z_global['E']},{z_global['S']},{z_global['W']}")
+        # Show which cells match this observation
+        matching = []
+        for cell in sorted(MAZE_MAP.keys()):
+            N, E, S, W = MAZE_MAP[cell]
+            if N == z_global['N'] and E == z_global['E'] and S == z_global['S'] and W == z_global['W']:
+                matching.append(cell)
+        print(f"  [DEBUG] Cells matching this obs: {matching}")
+
     return (z_global["N"], z_global["E"], z_global["S"], z_global["W"]), z_robot
 
 
 def get_wall_observation_majority(robot: HamBot, samples: int = 3, dt: float = 0.12):
     """Get majority-voted wall observations over multiple samples."""
     zs = []
-    for _ in range(samples):
-        z, _ = get_wall_observation(robot)
+    for i in range(samples):
+        z, _ = get_wall_observation(robot, debug=(i == 0))  # Only debug first sample
         zs.append(z)
         time.sleep(dt)
     arr = np.array(zs, dtype=int)
@@ -256,7 +300,7 @@ def likelihood(z: int, s: int) -> float:
 
 
 def sensor_update(particles: list, observation: tuple) -> np.ndarray:
-    """Update particle weights based on observations."""
+        """Update particle weights based on observations."""
     zN, zE, zS, zW = observation
     w = np.zeros(len(particles), dtype=float)
     for i, p in enumerate(particles):
@@ -264,9 +308,9 @@ def sensor_update(particles: list, observation: tuple) -> np.ndarray:
         w[i] = (likelihood(zN, sN) * likelihood(zE, sE) *
                 likelihood(zS, sS) * likelihood(zW, sW))
     total = w.sum()
-    if total == 0:
+        if total == 0:
         w[:] = 1.0 / len(w)
-    else:
+        else:
         w /= total
     return w
 
@@ -306,15 +350,58 @@ def mode_cell_and_fraction(counts):
 
 
 def print_maze_walls():
-    """Print the wall configuration for each cell."""
-    print("Wall configuration (N,E,S,W for each cell):")
+        """Print the wall configuration for each cell."""
+        print("Wall configuration (N,E,S,W for each cell):")
     for r in range(GRID_SIZE):
-        row_vals = []
+            row_vals = []
         for c in range(GRID_SIZE):
             cell = rc_to_cell(r, c)
             N, E, S, W = MAZE_MAP[cell]
-            row_vals.append(f"{N}{E}{S}{W}")
-        print(" | ".join(row_vals))
+                row_vals.append(f"{N}{E}{S}{W}")
+            print(" | ".join(row_vals))
+        print()
+
+
+def print_maze_visual():
+    """Print a visual representation of the maze."""
+    print("\nMaze Layout (visual):")
+    print("Cell numbers:")
+    for r in range(GRID_SIZE):
+        print("  " + " ".join(f"{rc_to_cell(r, c):2d}" for c in range(GRID_SIZE)))
+    print()
+    
+    # Draw maze with walls
+    for r in range(GRID_SIZE):
+        # Top walls
+        top_line = ""
+        for c in range(GRID_SIZE):
+            cell = rc_to_cell(r, c)
+            N, E, S, W = MAZE_MAP[cell]
+            top_line += "+--" if N else "+  "
+        top_line += "+"
+        print(top_line)
+        
+        # Left/right walls and cell numbers
+        mid_line = ""
+        for c in range(GRID_SIZE):
+            cell = rc_to_cell(r, c)
+            N, E, S, W = MAZE_MAP[cell]
+            mid_line += "|" if W else " "
+            mid_line += f"{cell:2d}"
+        # Right edge
+        last_cell = rc_to_cell(r, GRID_SIZE - 1)
+        N, E, S, W = MAZE_MAP[last_cell]
+        mid_line += "|" if E else " "
+        print(mid_line)
+    
+    # Bottom walls of last row
+    bottom_line = ""
+    for c in range(GRID_SIZE):
+        cell = rc_to_cell(GRID_SIZE - 1, c)
+        N, E, S, W = MAZE_MAP[cell]
+        bottom_line += "+--" if S else "+  "
+    bottom_line += "+"
+    print(bottom_line)
     print()
 
 
@@ -373,7 +460,7 @@ def do_forward_one_cell(robot: HamBot):
             break
 
         scan = robot.get_range_image()
-        if scan == -1:
+    if scan == -1:
             print("WARN: LIDAR unavailable during forward.")
             aborted_reason = "lidar"
             break
@@ -508,8 +595,11 @@ def run_particle_filter():
     print(f"  Grid size: {GRID_SIZE}x{GRID_SIZE} = {GRID_SIZE ** 2} cells")
     print(f"  Total particles: {NUM_PARTICLES}")
     print(f"  Particles per cell: {NUM_PARTICLES // (GRID_SIZE ** 2)}")
+    print(f"  Wall threshold: {WALL_DETECT_THRESH_M}m")
     print()
     print_maze_walls()
+    print_maze_visual()
+    print("VERIFY: Does this maze match your physical maze?")
 
     particles = init_particles_even()
     last_cmd = None
@@ -590,7 +680,7 @@ def run_particle_filter():
                 print(f"SUCCESS: ≥80% for {STABLE_CONV_STEPS} consecutive steps!")
                 print(f"Robot localized in cell {mode_cell}!")
                 print(f"{'*' * 50}")
-                break
+            break
 
     except KeyboardInterrupt:
         print("\nInterrupted by user.")
