@@ -327,19 +327,23 @@ def execute_turn(robot, cmd):
         time.sleep(0.1)
         return
     
-    # Calculate target heading (R = +90°, L = -90° in IMU convention)
+    # Calculate target heading
+    # R = clockwise = heading decreases (in this IMU: -90)
+    # L = counter-clockwise = heading increases (in this IMU: +90)
     if cmd == "R":
-        target_heading = normalize_angle(start_heading + 90)
-    else:
         target_heading = normalize_angle(start_heading - 90)
-    
-    # Start turning (swapped to match heading direction)
-    if cmd == "R":
-        robot.set_left_motor_speed(-TURN_RPM)
-        robot.set_right_motor_speed(TURN_RPM)
     else:
+        target_heading = normalize_angle(start_heading + 90)
+    
+    # Motor directions (same as time-based fallback)
+    # R: left forward, right backward = clockwise
+    # L: left backward, right forward = counter-clockwise
+    if cmd == "R":
         robot.set_left_motor_speed(TURN_RPM)
         robot.set_right_motor_speed(-TURN_RPM)
+    else:
+        robot.set_left_motor_speed(-TURN_RPM)
+        robot.set_right_motor_speed(TURN_RPM)
     
     start_time = time.time()
     
