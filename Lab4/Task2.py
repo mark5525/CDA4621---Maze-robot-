@@ -422,142 +422,45 @@ def execute_turn(robot: HamBot, cmd: str):
 
 def do_forward_one_cell(robot: HamBot):
     """
-    Move forward one cell with encoder tracking, drift correction,
-    side-centering, and diagonal obstacle detection.
+    Move forward one cell using simple LIDAR-based control.
+    Stops when front obstacle is within FRONT_STOP_M or after timeout.
     """
-    if not hasattr(do_forward_one_cell, "slowing"):
-        do_forward_one_cell.slowing = False
-    if not hasattr(do_forward_one_cell, "fld_hits"):
-        do_forward_one_cell.fld_hits = 0
-    if not hasattr(do_forward_one_cell, "frd_hits"):
-        do_forward_one_cell.frd_hits = 0
-
-    # Reset encoders if available
-    try:
-        robot.reset_encoders()
-    except:
-        pass
-
+    MOVE_TIME_S = 2.5      # Time to move one cell
+    DRIVE_SPEED = 30.0     # RPM for forward movement
+    
     start_time = time.time()
     aborted_reason = None
-    avg_rad = 0.0
-
-    while True:
-        # Try to get encoder readings
-        try:
-            l_rad, r_rad = robot.get_encoder_readings()
-            avg_rad = (abs(l_rad) + abs(r_rad)) / 2.0
-            if avg_rad >= RAD_PER_CELL:
-                break
-        except:
-            # Fallback to time-based if no encoders
-            if time.time() - start_time > 2.0:
-                break
-
-        if time.time() - start_time > MAX_FWD_TIME_S:
-            print("WARN: forward move timeout hit.")
-            aborted_reason = "timeout"
-            break
-
+    
+    print(f"  Moving forward (max {MOVE_TIME_S}s)...")
+    
+    while time.time() - start_time < MOVE_TIME_S:
         scan = robot.get_range_image()
         if scan == -1:
-            print("WARN: LIDAR unavailable during forward.")
+            print("  WARN: LIDAR unavailable.")
             aborted_reason = "lidar"
             break
-
+        
+        # Check front distance
         d_front = median_sector(scan, 180)
-        d_left = median_sector(scan, 90)
-        d_right = median_sector(scan, 270)
-        d_fld = median_sector(scan, FRONT_LEFT_DIAG_DEG)
-        d_frd = median_sector(scan, FRONT_RIGHT_DIAG_DEG)
-
-        # Emergency stop: front wall
+        
         if d_front is not None and d_front <= FRONT_STOP_M:
-            print("EMERGENCY STOP: front wall too close.")
+            print(f"  Stopped: front wall at {d_front:.2f}m")
             aborted_reason = "front"
             break
-
-        # Diagonal obstacle tracking
-        if d_fld is not None and d_fld <= FRONT_DIAG_STOP_M:
-            do_forward_one_cell.fld_hits += 1
-        else:
-            do_forward_one_cell.fld_hits = 0
-
-        if d_frd is not None and d_frd <= FRONT_DIAG_STOP_M:
-            do_forward_one_cell.frd_hits += 1
-        else:
-            do_forward_one_cell.frd_hits = 0
-
-        if do_forward_one_cell.fld_hits >= 2:
-            print("EMERGENCY STOP: front-left diag too close.")
-            aborted_reason = "diagL"
-            break
-        if do_forward_one_cell.frd_hits >= 2:
-            print("EMERGENCY STOP: front-right diag too close.")
-            aborted_reason = "diagR"
-            break
-
-        # Speed ramp
-        t = time.time() - start_time
-        ramp_frac = min(1.0, t / RAMP_TIME_S)
-        base = max(MIN_RAMP_RPM, FWD_RPM * ramp_frac)
-
-        # Drift correction (encoder-based)
-        drift_corr = 0.0
-        try:
-            l_rad, r_rad = robot.get_encoder_readings()
-            drift_err = (l_rad - r_rad)
-            drift_corr = ENC_KP * drift_err
-        except:
-            pass
-
-        # Side centering
-        side_corr = 0.0
-        if d_left is not None and d_right is not None:
-            side_err = d_left - d_right
-            side_corr = SIDE_KP * side_err
-
-        # Diagonal slowdown + steering
-        diag_corr = 0.0
-        diag_slow = 1.0
-        if d_fld is not None and d_frd is not None:
-            min_diag = min(d_fld, d_frd)
-
-            if do_forward_one_cell.slowing:
-                if min_diag > FRONT_DIAG_EXIT_M:
-                    do_forward_one_cell.slowing = False
-            else:
-                if min_diag < FRONT_DIAG_ENTER_M:
-                    do_forward_one_cell.slowing = True
-
-            if do_forward_one_cell.slowing:
-                diag_slow = max(0.7, min_diag / FRONT_DIAG_ENTER_M)
-
-            diag_err = d_fld - d_frd
-            diag_corr = (SIDE_KP * 0.8) * diag_err
-
-        total_corr = drift_corr + side_corr + diag_corr
-        base *= diag_slow
-
-        robot.set_left_motor_speed(base - total_corr)
-        robot.set_right_motor_speed(base + total_corr)
-
+        
+        # Simple forward movement
+        robot.set_left_motor_speed(DRIVE_SPEED)
+        robot.set_right_motor_speed(DRIVE_SPEED)
         time.sleep(CTRL_DT)
-
+    
+    # Stop motors
     robot.set_left_motor_speed(0.0)
     robot.set_right_motor_speed(0.0)
-    time.sleep(0.2)
-
-    # Reset hit counters after any abort
+    time.sleep(0.3)
+    
     if aborted_reason is not None:
-        do_forward_one_cell.fld_hits = 0
-        do_forward_one_cell.frd_hits = 0
-        do_forward_one_cell.slowing = False
-
-    # If aborted before 90% of cell, treat as NO MOVE
-    if aborted_reason is not None and avg_rad < 0.90 * RAD_PER_CELL:
         return False, aborted_reason
-
+    
     return True, "ok"
 
 
