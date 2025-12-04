@@ -9,11 +9,10 @@ from robot_systems.robot import HamBot
 
 
 #GRID 
-GRID_ROWS = 4
-GRID_COLS = 5
-NUM_CELLS = GRID_ROWS * GRID_COLS  # 20
+GRID_SIZE = 4
+NUM_CELLS = GRID_SIZE * GRID_SIZE  # 16
 
-N_PARTICLES = 250
+N_PARTICLES = 160  # 10 per cell
 
 # LIDAR returns mm
 LIDAR_MM_TO_M = 1.0 / 1000.0
@@ -50,41 +49,43 @@ ENC_KP   = 8.0
 # Side-centering correction
 SIDE_KP  = 1.2
 
-#PF sensor model
+#PF sensor model (lab spec)
 P_Z1_S1 = 0.8
 P_Z0_S1 = 0.2
-P_Z1_S0 = 0.3
-P_Z0_S0 = 0.7
+P_Z1_S0 = 0.4
+P_Z0_S0 = 0.6
 
 # Stable convergence requirement
 STABLE_CONV_STEPS = 2
 
 
 
+# 4x4 MAZE MAP (N,E,S,W)
+# Grid layout:
+#  1  2  3  4
+#  5  6  7  8
+#  9 10 11 12
+# 13 14 15 16
 MAZE_MAP = {
  1:  (1,0,0,1),
  2:  (1,0,1,0),
  3:  (1,0,1,0),
- 4:  (1,0,1,0),
- 5:  (1,1,0,0),
+ 4:  (1,1,0,0),
 
- 6:  (0,1,0,1),
- 7:  (1,0,1,1),
- 8:  (1,0,1,0),
- 9:  (1,0,1,0),
-10:  (0,1,1,0),
+ 5:  (0,1,0,1),
+ 6:  (1,0,1,1),
+ 7:  (1,0,1,0),
+ 8:  (0,1,1,0),
 
-11:  (0,0,0,1),
-12:  (1,0,1,0),
-13:  (1,1,1,0),
-14:  (1,1,1,0),
-15:  (1,1,0,1),  # open SOUTH only 
+ 9:  (0,0,0,1),
+10:  (1,0,1,0),
+11:  (1,1,1,0),
+12:  (1,1,0,1),
 
-16:  (0,0,1,1),
-17:  (1,0,1,0),
-18:  (1,0,1,0),
-19:  (1,0,1,0),
-20:  (0,1,1,0),  # open NORTH + WEST 
+13:  (0,0,1,1),
+14:  (1,0,1,0),
+15:  (1,0,1,0),
+16:  (0,1,1,0),
 }
 
 
@@ -107,7 +108,7 @@ class Particle:
 
 def init_particles_even():
     parts = []
-    per_cell = N_PARTICLES // NUM_CELLS  # 12 each, remainder added random
+    per_cell = N_PARTICLES // NUM_CELLS  # 10 each, remainder added random
     for cell in range(1, NUM_CELLS+1):
         for _ in range(per_cell):
             parts.append(Particle(cell, random.choice(ORIENTATIONS)))
@@ -120,14 +121,14 @@ def init_particles_even():
 #MAP UTILS
 
 def cell_to_rc(cell):
-    r, c = divmod(cell - 1, GRID_COLS)
+    r, c = divmod(cell - 1, GRID_SIZE)
     return r, c
 
 def rc_to_cell(r, c):
-    return r * GRID_COLS + c + 1
+    return r * GRID_SIZE + c + 1
 
 def in_bounds(r, c):
-    return 0 <= r < GRID_ROWS and 0 <= c < GRID_COLS
+    return 0 <= r < GRID_SIZE and 0 <= c < GRID_SIZE
 
 def wall_in_direction(cell, direction):
     N, E, S, W = MAZE_MAP[cell]
@@ -265,7 +266,7 @@ def resample_particles(particles, weights):
 #PRINTING / STOP CHECK
 def particle_counts_grid(particles):
     counts = Counter(p.cell for p in particles)
-    grid = np.zeros((GRID_ROWS, GRID_COLS), dtype=int)
+    grid = np.zeros((GRID_SIZE, GRID_SIZE), dtype=int)
     for cell,k in counts.items():
         r,c = cell_to_rc(cell)
         grid[r,c] = k
@@ -273,8 +274,8 @@ def particle_counts_grid(particles):
 
 def print_grid(grid):
     print("\nParticle count grid (row 0 = top):")
-    for r in range(GRID_ROWS):
-        print(" ".join(f"{grid[r,c]:3d}" for c in range(GRID_COLS)))
+    for r in range(GRID_SIZE):
+        print(" ".join(f"{grid[r,c]:3d}" for c in range(GRID_SIZE)))
 
 def mode_cell_and_fraction(counts):
     mode_cell = max(counts.keys(), key=lambda c: counts[c])
