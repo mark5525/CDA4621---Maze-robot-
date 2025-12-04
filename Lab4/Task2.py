@@ -56,7 +56,7 @@ P_Z1_S0 = 0.4
 P_Z0_S0 = 0.6
 
 # Stable convergence requirement
-STABLE_CONV_STEPS = 2  # stop immediately at 80% per lab spec
+STABLE_CONV_STEPS = 1  # stop immediately at 80% per lab spec
 
 
 
