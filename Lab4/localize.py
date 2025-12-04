@@ -9,10 +9,11 @@ from robot_systems.robot import HamBot
 
 
 #GRID 
-GRID_SIZE = 4
-NUM_CELLS = GRID_SIZE * GRID_SIZE  # 16
+GRID_ROWS = 4
+GRID_COLS = 5
+NUM_CELLS = GRID_ROWS * GRID_COLS  # 20
 
-N_PARTICLES = 160  # 10 per cell
+N_PARTICLES = 250
 
 # LIDAR returns mm
 LIDAR_MM_TO_M = 1.0 / 1000.0
@@ -20,72 +21,70 @@ LIDAR_MM_TO_M = 1.0 / 1000.0
 SECTOR_HALF_WIDTH = 8  # degrees around center ray
 
 #PF observation threshold
-WALL_OBS_THRESH_M = 0.55  # slightly increased for 60cm cells  
+WALL_OBS_THRESH_M = 0.50  
 
 #driving safety thresholds 
-FRONT_STOP_M         = 0.35   # increased for more stopping distance
-FRONT_DIAG_ENTER_M   = 0.42
-FRONT_DIAG_EXIT_M    = 0.48
-FRONT_DIAG_STOP_M    = 0.25
+FRONT_STOP_M         = 0.22
+FRONT_DIAG_ENTER_M   = 0.35
+FRONT_DIAG_EXIT_M    = 0.40
+FRONT_DIAG_STOP_M    = 0.18
 
 FRONT_LEFT_DIAG_DEG  = 135
 FRONT_RIGHT_DIAG_DEG = 225
 
 #motion tuning 
-FWD_RPM       = 30   # reduced from 35 for safer movement
-MIN_RAMP_RPM  = 15   # reduced from 18
+FWD_RPM       = 35
+MIN_RAMP_RPM  = 18
 RAMP_TIME_S   = 0.8
 CTRL_DT       = 0.05
 
 TURN_RPM      = 25
 TURN_TIME_S   = 1.25  
 
-RAD_PER_CELL  = 10   # tuned for 60cm cells
-MAX_FWD_TIME_S = 8.0  # more time to complete longer distance
+RAD_PER_CELL  = 6.0   
+MAX_FWD_TIME_S = 6.0
 
 # Drift correction (encoders)
 ENC_KP   = 8.0
 
 # Side-centering correction
-SIDE_KP  = 0.8   # reduced to prevent over-correction
+SIDE_KP  = 1.2
 
-#PF sensor model (lab spec)
+#PF sensor model
 P_Z1_S1 = 0.8
 P_Z0_S1 = 0.2
-P_Z1_S0 = 0.4
-P_Z0_S0 = 0.6
+P_Z1_S0 = 0.3
+P_Z0_S0 = 0.7
 
 # Stable convergence requirement
-STABLE_CONV_STEPS = 2  # stop immediately at 80% per lab spec
+STABLE_CONV_STEPS = 2
 
 
 
-# 4x4 MAZE MAP (N,E,S,W)
-# Grid layout:
-#  1  2  3  4
-#  5  6  7  8
-#  9 10 11 12
-# 13 14 15 16
 MAZE_MAP = {
  1:  (1,0,0,1),
  2:  (1,0,1,0),
  3:  (1,0,1,0),
- 4:  (1,1,0,0),
+ 4:  (1,0,1,0),
+ 5:  (1,1,0,0),
 
- 5:  (0,1,0,1),
- 6:  (1,0,1,1),
- 7:  (1,0,1,0),
- 8:  (0,1,1,0),
+ 6:  (0,1,0,1),
+ 7:  (1,0,1,1),
+ 8:  (1,0,1,0),
+ 9:  (1,0,1,0),
+10:  (0,1,1,0),
 
- 9:  (0,0,0,1),
-10:  (1,0,1,0),
-11:  (1,1,1,0),
-12:  (1,1,0,1),
+11:  (0,0,0,1),
+12:  (1,0,1,0),
+13:  (1,1,1,0),
+14:  (1,1,1,0),
+15:  (1,1,0,1),  # open SOUTH only 
 
-13:  (0,0,1,1),
-14:  (1,0,1,0),
-15:  (1,0,1,0),
-16:  (0,1,1,0),
+16:  (0,0,1,1),
+17:  (1,0,1,0),
+18:  (1,0,1,0),
+19:  (1,0,1,0),
+20:  (0,1,1,0),  # open NORTH + WEST 
 }
 
 
@@ -108,7 +107,7 @@ class Particle:
 
 def init_particles_even():
     parts = []
-    per_cell = N_PARTICLES // NUM_CELLS  # 10 each, remainder added random
+    per_cell = N_PARTICLES // NUM_CELLS  # 12 each, remainder added random
     for cell in range(1, NUM_CELLS+1):
         for _ in range(per_cell):
             parts.append(Particle(cell, random.choice(ORIENTATIONS)))
@@ -121,14 +120,14 @@ def init_particles_even():
 #MAP UTILS
 
 def cell_to_rc(cell):
-    r, c = divmod(cell - 1, GRID_SIZE)
+    r, c = divmod(cell - 1, GRID_COLS)
     return r, c
 
 def rc_to_cell(r, c):
-    return r * GRID_SIZE + c + 1
+    return r * GRID_COLS + c + 1
 
 def in_bounds(r, c):
-    return 0 <= r < GRID_SIZE and 0 <= c < GRID_SIZE
+    return 0 <= r < GRID_ROWS and 0 <= c < GRID_COLS
 
 def wall_in_direction(cell, direction):
     N, E, S, W = MAZE_MAP[cell]
@@ -266,7 +265,7 @@ def resample_particles(particles, weights):
 #PRINTING / STOP CHECK
 def particle_counts_grid(particles):
     counts = Counter(p.cell for p in particles)
-    grid = np.zeros((GRID_SIZE, GRID_SIZE), dtype=int)
+    grid = np.zeros((GRID_ROWS, GRID_COLS), dtype=int)
     for cell,k in counts.items():
         r,c = cell_to_rc(cell)
         grid[r,c] = k
@@ -274,8 +273,8 @@ def particle_counts_grid(particles):
 
 def print_grid(grid):
     print("\nParticle count grid (row 0 = top):")
-    for r in range(GRID_SIZE):
-        print(" ".join(f"{grid[r,c]:3d}" for c in range(GRID_SIZE)))
+    for r in range(GRID_ROWS):
+        print(" ".join(f"{grid[r,c]:3d}" for c in range(GRID_COLS)))
 
 def mode_cell_and_fraction(counts):
     mode_cell = max(counts.keys(), key=lambda c: counts[c])
@@ -286,82 +285,14 @@ def mode_cell_and_fraction(counts):
 
 #AUTONOMOUS DRIVING
 
-# Turn tuning
-TURN_TOLERANCE_DEG = 5.0   # degrees tolerance for target heading
-TURN_TIMEOUT_S = 4.0       # max time to complete turn
-
-def normalize_angle(angle):
-    """Normalize angle to 0-360 range."""
-    while angle < 0:
-        angle += 360
-    while angle >= 360:
-        angle -= 360
-    return angle
-
-def angle_diff(target, current):
-    """Shortest signed difference between two angles."""
-    diff = target - current
-    while diff > 180:
-        diff -= 360
-    while diff < -180:
-        diff += 360
-    return diff
-
 def execute_turn(robot, cmd):
-    """Execute 90-degree turn using IMU heading feedback."""
-    # Get current heading
-    start_heading = robot.get_heading(fresh_within=0.5, blocking=True, wait_timeout=1.0)
-    if start_heading is None:
-        # Fallback to time-based if IMU unavailable
-        print("WARN: IMU unavailable, using time-based turn")
-        if cmd == "R":
-            robot.set_left_motor_speed(TURN_RPM)
-            robot.set_right_motor_speed(-TURN_RPM)
-        else:
-            robot.set_left_motor_speed(-TURN_RPM)
-            robot.set_right_motor_speed(TURN_RPM)
-        time.sleep(TURN_TIME_S)
-        robot.stop_motors()
-        time.sleep(0.2)
-        robot.reset_encoders()
-        time.sleep(0.1)
-        return
-    
-    # Calculate target heading (R = -90°, L = +90° in IMU convention)
-    if cmd == "R":
-        target_heading = normalize_angle(start_heading - 90)
-    else:
-        target_heading = normalize_angle(start_heading + 90)
-    
-    # Start turning
     if cmd == "R":
         robot.set_left_motor_speed(TURN_RPM)
         robot.set_right_motor_speed(-TURN_RPM)
     else:
         robot.set_left_motor_speed(-TURN_RPM)
         robot.set_right_motor_speed(TURN_RPM)
-    
-    start_time = time.time()
-    
-    while True:
-        # Check timeout
-        if time.time() - start_time > TURN_TIMEOUT_S:
-            print("WARN: turn timeout")
-            break
-        
-        # Get current heading
-        current_heading = robot.get_heading(fresh_within=0.2, blocking=True, wait_timeout=0.5)
-        if current_heading is None:
-            time.sleep(0.05)
-            continue
-        
-        # Check if we've reached target
-        diff = abs(angle_diff(target_heading, current_heading))
-        if diff <= TURN_TOLERANCE_DEG:
-            break
-        
-        time.sleep(0.02)
-    
+    time.sleep(TURN_TIME_S)
     robot.stop_motors()
     time.sleep(0.2)
     robot.reset_encoders()
