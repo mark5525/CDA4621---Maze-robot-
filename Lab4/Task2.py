@@ -300,7 +300,7 @@ def likelihood(z: int, s: int) -> float:
 
 
 def sensor_update(particles: list, observation: tuple) -> np.ndarray:
-        """Update particle weights based on observations."""
+    """Update particle weights based on observations."""
     zN, zE, zS, zW = observation
     w = np.zeros(len(particles), dtype=float)
     for i, p in enumerate(particles):
@@ -308,9 +308,9 @@ def sensor_update(particles: list, observation: tuple) -> np.ndarray:
         w[i] = (likelihood(zN, sN) * likelihood(zE, sE) *
                 likelihood(zS, sS) * likelihood(zW, sW))
     total = w.sum()
-        if total == 0:
+    if total == 0:
         w[:] = 1.0 / len(w)
-        else:
+    else:
         w /= total
     return w
 
@@ -350,16 +350,16 @@ def mode_cell_and_fraction(counts):
 
 
 def print_maze_walls():
-        """Print the wall configuration for each cell."""
-        print("Wall configuration (N,E,S,W for each cell):")
+    """Print the wall configuration for each cell."""
+    print("Wall configuration (N,E,S,W for each cell):")
     for r in range(GRID_SIZE):
-            row_vals = []
+        row_vals = []
         for c in range(GRID_SIZE):
             cell = rc_to_cell(r, c)
             N, E, S, W = MAZE_MAP[cell]
-                row_vals.append(f"{N}{E}{S}{W}")
-            print(" | ".join(row_vals))
-        print()
+            row_vals.append(f"{N}{E}{S}{W}")
+        print(" | ".join(row_vals))
+    print()
 
 
 def print_maze_visual():
@@ -460,7 +460,7 @@ def do_forward_one_cell(robot: HamBot):
             break
 
         scan = robot.get_range_image()
-    if scan == -1:
+        if scan == -1:
             print("WARN: LIDAR unavailable during forward.")
             aborted_reason = "lidar"
             break
@@ -680,7 +680,7 @@ def run_particle_filter():
                 print(f"SUCCESS: ≥80% for {STABLE_CONV_STEPS} consecutive steps!")
                 print(f"Robot localized in cell {mode_cell}!")
                 print(f"{'*' * 50}")
-            break
+                break
 
     except KeyboardInterrupt:
         print("\nInterrupted by user.")
