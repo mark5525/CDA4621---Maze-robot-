@@ -41,6 +41,7 @@ MIN_RAMP_RPM = 18
 RAMP_TIME_S = 0.8
 CTRL_DT = 0.05
 TURN_RPM = 25
+TURN_TIME_S = 1.25
 RAD_PER_CELL = 6.0    # encoder radians per cell
 MAX_FWD_TIME_S = 6.0
 
@@ -176,7 +177,7 @@ def motion_update(particles: list, command: str) -> list:
 def median_sector(scan, center_deg: int):
     """Get median distance in a sector around center_deg."""
     idxs = [(center_deg + d) % 360 for d in range(-SECTOR_HALF_WIDTH, SECTOR_HALF_WIDTH + 1)]
-    vals = [scan[i] for i in idxs if 0 <= i < len(scan) and scan[i] > 0]
+    vals = [scan[i] for i in idxs if scan[i] > 0]
     if not vals:
         return None
     vals.sort()
@@ -198,10 +199,10 @@ def get_wall_observation(robot: HamBot):
     if scan == -1:
         raise RuntimeError("LIDAR not enabled.")
 
-    heading = robot.get_heading()
+    heading = robot.get_heading(fresh_within=0.5, blocking=True, wait_timeout=1.0)
     orient = heading_to_orient(heading)
     if orient is None:
-        orient = "N"  # Default fallback
+        raise RuntimeError("IMU heading unavailable.")
 
     # HamBot LIDAR: front=180, left=90, right=270, back=0
     d_front = median_sector(scan, 180)
@@ -327,10 +328,11 @@ def execute_turn(robot: HamBot, cmd: str):
     else:
         robot.set_left_motor_speed(-TURN_RPM)
         robot.set_right_motor_speed(TURN_RPM)
-    time.sleep(1.25)  # Tune for 90 degrees
-    robot.set_left_motor_speed(0.0)
-    robot.set_right_motor_speed(0.0)
+    time.sleep(TURN_TIME_S)
+    robot.stop_motors()
     time.sleep(0.2)
+    robot.reset_encoders()
+    time.sleep(0.1)
 
 
 def do_forward_one_cell(robot: HamBot):
@@ -345,27 +347,17 @@ def do_forward_one_cell(robot: HamBot):
     if not hasattr(do_forward_one_cell, "frd_hits"):
         do_forward_one_cell.frd_hits = 0
 
-    # Reset encoders if available
-    try:
-        robot.reset_encoders()
-    except:
-        pass
-
+    robot.reset_encoders()
     start_time = time.time()
     aborted_reason = None
     avg_rad = 0.0
 
     while True:
-        # Try to get encoder readings
-        try:
-            l_rad, r_rad = robot.get_encoder_readings()
-            avg_rad = (abs(l_rad) + abs(r_rad)) / 2.0
-            if avg_rad >= RAD_PER_CELL:
-                break
-        except:
-            # Fallback to time-based if no encoders
-            if time.time() - start_time > 2.0:
-                break
+        l_rad, r_rad = robot.get_encoder_readings()
+        avg_rad = (abs(l_rad) + abs(r_rad)) / 2.0
+
+        if avg_rad >= RAD_PER_CELL:
+            break
 
         if time.time() - start_time > MAX_FWD_TIME_S:
             print("WARN: forward move timeout hit.")
@@ -390,7 +382,7 @@ def do_forward_one_cell(robot: HamBot):
             aborted_reason = "front"
             break
 
-        # Diagonal obstacle tracking
+        # Consecutive diag hits
         if d_fld is not None and d_fld <= FRONT_DIAG_STOP_M:
             do_forward_one_cell.fld_hits += 1
         else:
@@ -402,27 +394,22 @@ def do_forward_one_cell(robot: HamBot):
             do_forward_one_cell.frd_hits = 0
 
         if do_forward_one_cell.fld_hits >= 2:
-            print("EMERGENCY STOP: front-left diag too close.")
+            print("EMERGENCY STOP: front-left diag too close (persistent).")
             aborted_reason = "diagL"
             break
         if do_forward_one_cell.frd_hits >= 2:
-            print("EMERGENCY STOP: front-right diag too close.")
+            print("EMERGENCY STOP: front-right diag too close (persistent).")
             aborted_reason = "diagR"
             break
 
-        # Speed ramp
+        # Ramp
         t = time.time() - start_time
         ramp_frac = min(1.0, t / RAMP_TIME_S)
         base = max(MIN_RAMP_RPM, FWD_RPM * ramp_frac)
 
-        # Drift correction (encoder-based)
-        drift_corr = 0.0
-        try:
-            l_rad, r_rad = robot.get_encoder_readings()
-            drift_err = (l_rad - r_rad)
-            drift_corr = ENC_KP * drift_err
-        except:
-            pass
+        # Drift correction
+        drift_err = (l_rad - r_rad)
+        drift_corr = ENC_KP * drift_err
 
         # Side centering
         side_corr = 0.0
@@ -457,8 +444,7 @@ def do_forward_one_cell(robot: HamBot):
 
         time.sleep(CTRL_DT)
 
-    robot.set_left_motor_speed(0.0)
-    robot.set_right_motor_speed(0.0)
+    robot.stop_motors()
     time.sleep(0.2)
 
     # Reset hit counters after any abort
@@ -499,17 +485,9 @@ def choose_autonomous_command(z_robot: dict, last_cmd: str = None) -> str:
 
 # ============== MAIN LOOP ==============
 def run_particle_filter():
-    print("Initializing HamBot...")
+    print("Initializing Bot")
     robot = HamBot(lidar_enabled=True, camera_enabled=False)
-    robot.max_motor_speed = 60
     time.sleep(2.0)
-
-    print(f"\nInitialized particle filter:")
-    print(f"  Grid size: {GRID_SIZE}x{GRID_SIZE} = {GRID_SIZE ** 2} cells")
-    print(f"  Total particles: {NUM_PARTICLES}")
-    print(f"  Particles per cell: {NUM_PARTICLES // (GRID_SIZE ** 2)}")
-    print()
-    print_maze_walls()
 
     particles = init_particles_even()
     last_cmd = None
@@ -519,13 +497,12 @@ def run_particle_filter():
         step = 0
         while True:
             step += 1
-            print(f"\n{'=' * 20} FILTER STEP {step} {'=' * 20}")
+            print(f"\n FILTER STEP {step} ")
 
             # Observe for policy
             _, z_robot = get_wall_observation(robot)
-            print(f"Robot observation: {z_robot}")
 
-            # Autonomous command
+            # Autonomous cmd
             cmd = choose_autonomous_command(z_robot, last_cmd=last_cmd)
             print(f"Autonomous command chosen: {cmd}")
             last_cmd = cmd
@@ -557,14 +534,11 @@ def run_particle_filter():
                 execute_turn(robot, cmd)
                 actual_cmd = cmd
 
-            print(f"Actual command executed: {actual_cmd}")
-
             # PF prediction with ACTUAL cmd
             particles = motion_update(particles, actual_cmd)
 
-            # PF correction with majority voting
+            # PF correction
             obs = get_wall_observation_majority(robot, samples=3)
-            print(f"Observation (majority): N={obs[0]}, E={obs[1]}, S={obs[2]}, W={obs[3]}")
             weights = sensor_update(particles, obs)
 
             # Resample
@@ -575,8 +549,7 @@ def run_particle_filter():
             print_grid(grid)
 
             mode_cell, mode_count, frac = mode_cell_and_fraction(counts)
-            print(f"\nMode cell estimate: {mode_cell} with {mode_count}/{NUM_PARTICLES} "
-                  f"particles ({frac * 100:.1f}%)")
+            print(f"\nMode cell estimate: {mode_cell} with {mode_count}/{NUM_PARTICLES} particles ({frac*100:.1f}%)")
             print(f"Converged? {'YES' if frac >= 0.80 else 'NO'}")
 
             # Stable convergence check
@@ -586,18 +559,12 @@ def run_particle_filter():
                 stable = 0
 
             if stable >= STABLE_CONV_STEPS:
-                print(f"\n{'*' * 50}")
-                print(f"SUCCESS: ≥80% for {STABLE_CONV_STEPS} consecutive steps!")
-                print(f"Robot localized in cell {mode_cell}!")
-                print(f"{'*' * 50}")
+                print(f"\n SUCCESS: ≥80% for {STABLE_CONV_STEPS} consecutive steps.")
                 break
 
-    except KeyboardInterrupt:
-        print("\nInterrupted by user.")
     finally:
         print("\nShutting down HamBot...")
-        robot.set_left_motor_speed(0.0)
-        robot.set_right_motor_speed(0.0)
+        robot.disconnect_robot()
 
 
 if __name__ == "__main__":
