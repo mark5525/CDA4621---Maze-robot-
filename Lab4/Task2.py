@@ -327,11 +327,11 @@ def execute_turn(robot, cmd):
         time.sleep(0.1)
         return
     
-    # Calculate target heading (R = -90°, L = +90° in IMU convention)
+    # Calculate target heading (R = +90°, L = -90° in IMU convention)
     if cmd == "R":
-        target_heading = normalize_angle(start_heading - 90)
-    else:
         target_heading = normalize_angle(start_heading + 90)
+    else:
+        target_heading = normalize_angle(start_heading - 90)
     
     # Start turning
     if cmd == "R":
