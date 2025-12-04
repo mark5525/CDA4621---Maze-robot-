@@ -20,28 +20,28 @@ LIDAR_MM_TO_M = 1.0 / 1000.0
 SECTOR_HALF_WIDTH = 8  # degrees around center ray
 
 #PF observation threshold
-WALL_OBS_THRESH_M = 0.50  
+WALL_OBS_THRESH_M = 0.55  # slightly increased for 60cm cells  
 
 #driving safety thresholds 
-FRONT_STOP_M         = 0.22
-FRONT_DIAG_ENTER_M   = 0.35
-FRONT_DIAG_EXIT_M    = 0.40
-FRONT_DIAG_STOP_M    = 0.18
+FRONT_STOP_M         = 0.28   # increased from 0.22
+FRONT_DIAG_ENTER_M   = 0.40   # increased from 0.35
+FRONT_DIAG_EXIT_M    = 0.45   # increased from 0.40
+FRONT_DIAG_STOP_M    = 0.22   # increased from 0.18
 
 FRONT_LEFT_DIAG_DEG  = 135
 FRONT_RIGHT_DIAG_DEG = 225
 
 #motion tuning 
-FWD_RPM       = 35
-MIN_RAMP_RPM  = 18
+FWD_RPM       = 30   # reduced from 35 for safer movement
+MIN_RAMP_RPM  = 15   # reduced from 18
 RAMP_TIME_S   = 0.8
 CTRL_DT       = 0.05
 
 TURN_RPM      = 25
 TURN_TIME_S   = 1.25  
 
-RAD_PER_CELL  = 6.0   
-MAX_FWD_TIME_S = 6.0
+RAD_PER_CELL  = 9.0   # increased for 60cm cells (was 6.0)
+MAX_FWD_TIME_S = 8.0  # more time to complete longer distance
 
 # Drift correction (encoders)
 ENC_KP   = 8.0
