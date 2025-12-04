@@ -1,67 +1,75 @@
 """
 Task 2 — Particle Filter in the 4x4 grid.
 
-Modified for:
- - 4x4 grid (16 cells)
- - 160 particles total (10 particles per cell)
- - Evenly distributed initialization
+Enhanced with features from localize.py:
+ - Encoder-based distance tracking
+ - Drift/side correction
+ - Diagonal obstacle detection
+ - Majority voting for observations
+ - Autonomous navigation
+ - Stable convergence requirement
 """
 
 import random
 import time
-from collections import defaultdict
+from collections import defaultdict, Counter
 from typing import Dict, Tuple
+import numpy as np
 
 from HamBot.src.robot_systems.robot import HamBot
 
+# ============== GRID CONFIG ==============
 GRID_SIZE = 4          # 4x4 grid → 16 cells
 NUM_PARTICLES = 160    # 10 particles per cell
-WALL_DETECT_THRESH_M = 0.50  # meters; tweak based on your maze spacing
+
+# ============== LIDAR CONFIG ==============
+LIDAR_MM_TO_M = 1.0 / 1000.0
+SECTOR_HALF_WIDTH = 8  # degrees around center ray
+WALL_DETECT_THRESH_M = 0.50  # meters for wall observation
+
+# ============== DRIVING SAFETY THRESHOLDS ==============
+FRONT_STOP_M = 0.22
+FRONT_DIAG_ENTER_M = 0.35
+FRONT_DIAG_EXIT_M = 0.40
+FRONT_DIAG_STOP_M = 0.18
+FRONT_LEFT_DIAG_DEG = 135
+FRONT_RIGHT_DIAG_DEG = 225
+
+# ============== MOTION TUNING ==============
+FWD_RPM = 35
+MIN_RAMP_RPM = 18
+RAMP_TIME_S = 0.8
+CTRL_DT = 0.05
+TURN_RPM = 25
+RAD_PER_CELL = 6.0    # encoder radians per cell
+MAX_FWD_TIME_S = 6.0
+
+# Drift correction (encoders)
+ENC_KP = 8.0
+# Side-centering correction
+SIDE_KP = 1.2
+
+# ============== SENSOR MODEL (from lab spec) ==============
+# p(z=0 | s=0) = 0.6,  p(z=1 | s=0) = 0.4
+# p(z=1 | s=1) = 0.8,  p(z=0 | s=1) = 0.2
+P_Z1_S1 = 0.8
+P_Z0_S1 = 0.2
+P_Z1_S0 = 0.4  # Fixed to match lab spec (was 0.3)
+P_Z0_S0 = 0.6
+
+# Stable convergence requirement
+STABLE_CONV_STEPS = 2
 
 
-def rc_to_cell(r: int, c: int, n: int = GRID_SIZE) -> int:
-    return r * n + c + 1
-
-
-def cell_to_rc(cell: int, n: int = GRID_SIZE) -> Tuple[int, int]:
-    cell0 = cell - 1
-    return divmod(cell0, n)
-
-
-def build_outer_walls(n: int = GRID_SIZE) -> Dict[int, list[int]]:
-    """Build outer boundary walls for the grid."""
-    cell_walls: Dict[int, list[int]] = {}
-    for r in range(n):
-        for c in range(n):
-            N = 1 if r == 0     else 0
-            S = 1 if r == n - 1 else 0
-            W = 1 if c == 0     else 0
-            E = 1 if c == n - 1 else 0
-            cell_id = rc_to_cell(r, c, n)
-            cell_walls[cell_id] = [N, E, S, W]  # mutable: [N, E, S, W]
-    return cell_walls
-
-
-def add_horizontal_wall(cell_walls: Dict[int, list[int]], cell_above: int, cell_below: int):
-    """Add a horizontal wall between two vertically adjacent cells."""
-    cell_walls[cell_above][2] = 1  # S
-    cell_walls[cell_below][0] = 1  # N
-
-
-def add_vertical_wall(cell_walls: Dict[int, list[int]], cell_left: int, cell_right: int):
-    """Add a vertical wall between two horizontally adjacent cells."""
-    cell_walls[cell_left][1] = 1  # E
-    cell_walls[cell_right][3] = 1  # W
-
-
+# ============== MAZE MAP ==============
 def build_4x4_map() -> Dict[int, Tuple[int, int, int, int]]:
     """
     Build wall map for 4x4 grid using explicit wall codes (N,E,S,W).
-    Codes (row-major, cells 1..16):
-      1001 | 1010 | 1010 | 1100
-      0101 | 1011 | 1010 | 0110
-      0001 | 1010 | 1110 | 1101
-      0011 | 1010 | 1010 | 0110
+    Grid layout (cell numbers):
+     1  2  3  4
+     5  6  7  8
+     9 10 11 12
+    13 14 15 16
     """
     codes = [
         ["1001", "1010", "1010", "1100"],
@@ -73,364 +81,524 @@ def build_4x4_map() -> Dict[int, Tuple[int, int, int, int]]:
     cell_id = 1
     for row in codes:
         for code in row:
-            # code is NESW
             walls[cell_id] = tuple(int(ch) for ch in code)
             cell_id += 1
     return walls
 
 
-ORIENTS = ['N', 'E', 'S', 'W']
-ORIENT_INDEX = {'N': 0, 'E': 1, 'S': 2, 'W': 3}
+MAZE_MAP = build_4x4_map()
 
+
+# ============== CELL/ORIENTATION UTILITIES ==============
+ORIENTATIONS = ['N', 'E', 'S', 'W']
+ORIENT_INDEX = {'N': 0, 'E': 1, 'S': 2, 'W': 3}
+ORIENT_TO_VEC = {
+    "N": (0, -1),  # (dc, dr)
+    "E": (1, 0),
+    "S": (0, 1),
+    "W": (-1, 0),
+}
 LEFT_TURN = {'N': 'W', 'W': 'S', 'S': 'E', 'E': 'N'}
 RIGHT_TURN = {'N': 'E', 'E': 'S', 'S': 'W', 'W': 'N'}
 
-# Sensor model from lab spec:
-# p(z=0 | s=0) = 0.6,  p(z=1 | s=0) = 0.4
-# p(z=1 | s=1) = 0.8,  p(z=0 | s=1) = 0.2
-P_Z1_GIVEN_S1 = 0.8  # P(z=1 | s=1) observed wall when wall truly present
-P_Z1_GIVEN_S0 = 0.4  # P(z=1 | s=0) false positive (was 0.3, fixed to 0.4)
+
+def rc_to_cell(r: int, c: int, n: int = GRID_SIZE) -> int:
+    return r * n + c + 1
 
 
-def side_likelihood(true_side: int, z: int) -> float:
-    """Calculate P(z | s) for a single side."""
-    if z not in (0, 1):
-        raise ValueError("Observation z must be 0 or 1")
-    if true_side not in (0, 1):
-        raise ValueError("true_side must be 0 or 1")
-    if z == 1:
-        return P_Z1_GIVEN_S1 if true_side == 1 else P_Z1_GIVEN_S0
-    return (1.0 - P_Z1_GIVEN_S1) if true_side == 1 else (1.0 - P_Z1_GIVEN_S0)
+def cell_to_rc(cell: int, n: int = GRID_SIZE) -> Tuple[int, int]:
+    cell0 = cell - 1
+    return divmod(cell0, n)
 
 
-class ParticleFilterGrid:
-    def __init__(self, cell_walls: Dict[int, Tuple[int, int, int, int]],
-                 grid_size: int = GRID_SIZE,
-                 n_particles: int = NUM_PARTICLES):
-        self.cell_walls = cell_walls
-        self.grid_size = grid_size
-        self.n_particles = n_particles
-        self.particles = self._init_particles()
-        self.weights = [1.0 / n_particles] * n_particles
+def in_bounds(r: int, c: int) -> bool:
+    return 0 <= r < GRID_SIZE and 0 <= c < GRID_SIZE
 
-    def _init_particles(self):
-        """Initialize particles evenly across all cells."""
-        cells = sorted(self.cell_walls.keys())
-        n_cells = len(cells)
-        particles_per_cell = self.n_particles // n_cells
-        
-        particles = []
-        for cell in cells:
-            for _ in range(particles_per_cell):
-                orient = random.choice(ORIENTS)
-                particles.append({'cell': cell, 'orient': orient})
-        
-        # Handle any remainder particles
-        remainder = self.n_particles - len(particles)
-        for i in range(remainder):
-            cell = cells[i % n_cells]
-            orient = random.choice(ORIENTS)
-            particles.append({'cell': cell, 'orient': orient})
-        
-        return particles
 
-    def _forward_cell(self, cell: int, orient: str) -> int:
-        """Calculate the cell forward from current cell in given orientation."""
-        r, c = cell_to_rc(cell, self.grid_size)
-        if orient == 'N':
-            r -= 1
-        elif orient == 'S':
-            r += 1
-        elif orient == 'E':
-            c += 1
-        elif orient == 'W':
-            c -= 1
+def wall_in_direction(cell: int, direction: str) -> int:
+    N, E, S, W = MAZE_MAP[cell]
+    return {'N': N, 'E': E, 'S': S, 'W': W}[direction]
 
-        if not (0 <= r < self.grid_size and 0 <= c < self.grid_size):
-            return cell
-        return rc_to_cell(r, c, self.grid_size)
 
-    def motion_update(self, action: str):
-        """Update particles based on action (left, right, forward)."""
-        a = action.lower()
-        for p in self.particles:
-            cell, orient = p['cell'], p['orient']
-            if a in ('l', 'left'):
-                p['orient'] = LEFT_TURN[orient]
-            elif a in ('r', 'right'):
-                p['orient'] = RIGHT_TURN[orient]
-            elif a in ('f', 'forward'):
-                side_idx = ORIENT_INDEX[orient]
-                N, E, S, W = self.cell_walls[cell]
-                front_wall = (N, E, S, W)[side_idx]
-                if front_wall == 0:
-                    p['cell'] = self._forward_cell(cell, orient)
+# ============== PARTICLE CLASS ==============
+class Particle:
+    def __init__(self, cell: int, orient: str):
+        self.cell = cell
+        self.orient = orient
+
+
+def init_particles_even() -> list:
+    """Initialize particles evenly across all cells."""
+    particles = []
+    per_cell = NUM_PARTICLES // (GRID_SIZE * GRID_SIZE)
+    for cell in range(1, GRID_SIZE * GRID_SIZE + 1):
+        for _ in range(per_cell):
+            particles.append(Particle(cell, random.choice(ORIENTATIONS)))
+    while len(particles) < NUM_PARTICLES:
+        particles.append(Particle(random.randint(1, GRID_SIZE * GRID_SIZE),
+                                  random.choice(ORIENTATIONS)))
+    return particles
+
+
+# ============== MOTION UPDATE ==============
+def motion_update(particles: list, command: str) -> list:
+    """
+    Perfect deterministic model:
+      F: move one cell forward if no wall
+      L/R: rotate in place
+      S: stay (used when forward aborts early)
+    """
+    new_parts = []
+    for p in particles:
+        if command == "S":
+            new_parts.append(Particle(p.cell, p.orient))
+        elif command == "L":
+            new_parts.append(Particle(p.cell, LEFT_TURN[p.orient]))
+        elif command == "R":
+            new_parts.append(Particle(p.cell, RIGHT_TURN[p.orient]))
+        elif command == "F":
+            if wall_in_direction(p.cell, p.orient) == 1:
+                new_parts.append(Particle(p.cell, p.orient))
             else:
-                raise ValueError(f"Unknown action: {action}")
-
-    def observation_likelihood(self, cell: int, obs: Dict[str, int]) -> float:
-        """Calculate P(observation | cell) for all four sides."""
-        N, E, S, W = self.cell_walls[cell]
-        true_sides = {'N': N, 'E': E, 'S': S, 'W': W}
-        prob = 1.0
-        for side, z in obs.items():
-            prob *= side_likelihood(true_sides[side], z)
-        return prob
-
-    def sensor_update(self, obs: Dict[str, int]):
-        """Update particle weights based on observations."""
-        new_weights = []
-        for p in self.particles:
-            w = self.observation_likelihood(p['cell'], obs)
-            new_weights.append(w)
-
-        total = sum(new_weights)
-        if total == 0:
-            self.weights = [1.0 / self.n_particles] * self.n_particles
+                r, c = cell_to_rc(p.cell)
+                dc, dr = ORIENT_TO_VEC[p.orient]
+                nr, nc = r + dr, c + dc
+                if in_bounds(nr, nc):
+                    new_parts.append(Particle(rc_to_cell(nr, nc), p.orient))
+                else:
+                    new_parts.append(Particle(p.cell, p.orient))
         else:
-            self.weights = [w / total for w in new_weights]
-
-    def systematic_resample(self):
-        """Resample particles using systematic resampling."""
-        N = self.n_particles
-        cumulative = []
-        cumsum = 0.0
-        for w in self.weights:
-            cumsum += w
-            cumulative.append(cumsum)
-
-        step = 1.0 / N
-        start = random.random() * step
-
-        new_particles = []
-        i = 0
-        for m in range(N):
-            u = start + m * step
-            while u > cumulative[i]:
-                i += 1
-            base = self.particles[i]
-            new_particles.append({
-                'cell': base['cell'],
-                'orient': random.choice(ORIENTS)
-            })
-
-        self.particles = new_particles
-        self.weights = [1.0 / N] * N
-
-    def particle_histogram(self) -> Dict[int, int]:
-        """Count particles per cell."""
-        counts = defaultdict(int)
-        for p in self.particles:
-            counts[p['cell']] += 1
-        return counts
-
-    def estimate(self):
-        """Estimate current cell and check if localized."""
-        counts = self.particle_histogram()
-        if not counts:
-            return {}, None, 0, False
-        mode_cell, mode_count = max(counts.items(), key=lambda kv: kv[1])
-        localized = (mode_count >= 0.8 * self.n_particles)
-        return counts, mode_cell, mode_count, localized
-
-    def print_distribution(self, counts: Dict[int, int]):
-        """Print particle distribution as a grid."""
-        print("Particle counts per cell (row-wise):")
-        for r in range(self.grid_size):
-            row_vals = []
-            for c in range(self.grid_size):
-                cell = rc_to_cell(r, c, self.grid_size)
-                row_vals.append(f"{counts.get(cell, 0):3d}")
-            print(" ".join(row_vals))
-        print()
-    
-    def print_maze_walls(self):
-        """Print the wall configuration for each cell."""
-        print("Wall configuration (N,E,S,W for each cell):")
-        for r in range(self.grid_size):
-            row_vals = []
-            for c in range(self.grid_size):
-                cell = rc_to_cell(r, c, self.grid_size)
-                N, E, S, W = self.cell_walls[cell]
-                row_vals.append(f"{N}{E}{S}{W}")
-            print(" | ".join(row_vals))
-        print()
-
-    def step(self, action: str, obs: Dict[str, int]):
-        """Execute one full particle filter step."""
-        self.motion_update(action)
-        self.sensor_update(obs)
-        self.systematic_resample()
-
-        counts, mode_cell, mode_count, localized = self.estimate()
-        self.print_distribution(counts)
-        print(f"Mode cell: {mode_cell} with {mode_count}/{self.n_particles} "
-              f"({mode_count / self.n_particles:.1%})")
-        print(f"Localized (>=80% in one cell)? {localized}")
-        print("-" * 50)
-        return mode_cell, localized
-
-    def prob_front_wall(self) -> float:
-        """
-        Estimated probability that there is a wall directly in front of the robot,
-        based on current particle weights.
-        """
-        total = 0.0
-        wall_weight = 0.0
-        for p, w in zip(self.particles, self.weights):
-            cell = p['cell']
-            orient = p['orient']
-            side_idx = ORIENT_INDEX[orient]
-            N, E, S, W = self.cell_walls[cell]
-            front_wall = (N, E, S, W)[side_idx]
-            total += w
-            if front_wall == 1:
-                wall_weight += w
-        return wall_weight / total if total > 0 else 0.0
+            raise ValueError("command must be F/L/R/S")
+    return new_parts
 
 
-def observe_walls_from_lidar(bot: HamBot,
-                             wall_thresh_m: float = WALL_DETECT_THRESH_M) -> Dict[str, int]:
-    """
-    Convert lidar scan to binary wall observations on N, E, S, W.
-    HamBot LIDAR angles: front=180, left=90, right=270, back=0.
-    Rotate into global N/E/S/W using IMU heading.
-    """
-    scan = bot.get_range_image()
+# ============== SENSOR UTILITIES ==============
+def median_sector(scan, center_deg: int):
+    """Get median distance in a sector around center_deg."""
+    idxs = [(center_deg + d) % 360 for d in range(-SECTOR_HALF_WIDTH, SECTOR_HALF_WIDTH + 1)]
+    vals = [scan[i] for i in idxs if 0 <= i < len(scan) and scan[i] > 0]
+    if not vals:
+        return None
+    vals.sort()
+    return vals[len(vals) // 2] * LIDAR_MM_TO_M
+
+
+def heading_to_orient(heading_deg) -> str:
+    """Convert IMU heading to cardinal orientation."""
+    if heading_deg is None:
+        return None
+    cardinals = [(0, "E"), (90, "N"), (180, "W"), (270, "S"), (360, "E")]
+    best = min(cardinals, key=lambda x: abs((heading_deg - x[0] + 180) % 360 - 180))
+    return best[1]
+
+
+def get_wall_observation(robot: HamBot):
+    """Get wall observations in global N/E/S/W coordinates."""
+    scan = robot.get_range_image()
     if scan == -1:
-        return {'N': 0, 'E': 0, 'S': 0, 'W': 0}
-    heading = bot.get_heading()
-    heading_idx = 0 if heading is None else int(round(heading / 90.0)) % 4
+        raise RuntimeError("LIDAR not enabled.")
 
-    def is_wall_at_range(start: int, end: int) -> int:
-        """Check if wall detected in angle range, using average of valid readings."""
-        readings = [scan[i] for i in range(start, end) if 0 <= i < len(scan) and scan[i] and scan[i] > 0]
-        if not readings:
-            return 0
-        avg_mm = sum(readings) / len(readings)
-        return 1 if (avg_mm / 1000.0 <= wall_thresh_m) else 0
+    heading = robot.get_heading()
+    orient = heading_to_orient(heading)
+    if orient is None:
+        orient = "N"  # Default fallback
 
     # HamBot LIDAR: front=180, left=90, right=270, back=0
-    front = is_wall_at_range(175, 185)
-    left = is_wall_at_range(85, 95)
-    right = is_wall_at_range(265, 275)
-    back = is_wall_at_range(0, 10) or is_wall_at_range(350, 360)
+    d_front = median_sector(scan, 180)
+    d_right = median_sector(scan, 270)
+    d_left = median_sector(scan, 90)
+    d_back = median_sector(scan, 0)
 
-    # Map robot-relative observations to global N/E/S/W based on heading
-    if heading_idx == 0:   # facing East
-        obs = {'N': left, 'E': front, 'S': right, 'W': back}
-    elif heading_idx == 1:  # facing North
-        obs = {'N': front, 'E': right, 'S': back, 'W': left}
-    elif heading_idx == 2:  # facing West
-        obs = {'N': right, 'E': back, 'S': left, 'W': front}
-    else:                   # facing South
-        obs = {'N': back, 'E': left, 'S': front, 'W': right}
-    return obs
+    def is_wall(d):
+        return 1 if (d is not None and d <= WALL_DETECT_THRESH_M) else 0
+
+    z_robot = {
+        "front": is_wall(d_front),
+        "right": is_wall(d_right),
+        "back": is_wall(d_back),
+        "left": is_wall(d_left),
+    }
+
+    # Map robot-relative to global N/E/S/W based on orientation
+    if orient == "N":
+        z_global = {"N": z_robot["front"], "E": z_robot["right"], "S": z_robot["back"], "W": z_robot["left"]}
+    elif orient == "E":
+        z_global = {"E": z_robot["front"], "S": z_robot["right"], "W": z_robot["back"], "N": z_robot["left"]}
+    elif orient == "S":
+        z_global = {"S": z_robot["front"], "W": z_robot["right"], "N": z_robot["back"], "E": z_robot["left"]}
+    else:  # "W"
+        z_global = {"W": z_robot["front"], "N": z_robot["right"], "E": z_robot["back"], "S": z_robot["left"]}
+
+    return (z_global["N"], z_global["E"], z_global["S"], z_global["W"]), z_robot
 
 
-def rotate_90(bot: HamBot, direction: str = "left"):
+def get_wall_observation_majority(robot: HamBot, samples: int = 3, dt: float = 0.12):
+    """Get majority-voted wall observations over multiple samples."""
+    zs = []
+    for _ in range(samples):
+        z, _ = get_wall_observation(robot)
+        zs.append(z)
+        time.sleep(dt)
+    arr = np.array(zs, dtype=int)
+    maj = (arr.sum(axis=0) >= (samples / 2)).astype(int)
+    return tuple(int(x) for x in maj)
+
+
+def likelihood(z: int, s: int) -> float:
+    """Calculate P(z | s) for a single side."""
+    if s == 1 and z == 1:
+        return P_Z1_S1
+    if s == 1 and z == 0:
+        return P_Z0_S1
+    if s == 0 and z == 1:
+        return P_Z1_S0
+    return P_Z0_S0
+
+
+def sensor_update(particles: list, observation: tuple) -> np.ndarray:
+    """Update particle weights based on observations."""
+    zN, zE, zS, zW = observation
+    w = np.zeros(len(particles), dtype=float)
+    for i, p in enumerate(particles):
+        sN, sE, sS, sW = MAZE_MAP[p.cell]
+        w[i] = (likelihood(zN, sN) * likelihood(zE, sE) *
+                likelihood(zS, sS) * likelihood(zW, sW))
+    total = w.sum()
+    if total == 0:
+        w[:] = 1.0 / len(w)
+    else:
+        w /= total
+    return w
+
+
+# ============== RESAMPLING ==============
+def resample_particles(particles: list, weights: np.ndarray) -> list:
+    """Resample particles using multinomial resampling."""
+    idxs = np.random.choice(len(particles), size=len(particles), p=weights)
+    new_parts = [Particle(particles[j].cell, random.choice(ORIENTATIONS)) for j in idxs]
+    return new_parts
+
+
+# ============== PRINTING / ESTIMATION ==============
+def particle_counts_grid(particles: list):
+    """Get particle counts as grid and counter."""
+    counts = Counter(p.cell for p in particles)
+    grid = np.zeros((GRID_SIZE, GRID_SIZE), dtype=int)
+    for cell, k in counts.items():
+        r, c = cell_to_rc(cell)
+        grid[r, c] = k
+    return grid, counts
+
+
+def print_grid(grid):
+    """Print particle distribution grid."""
+    print("\nParticle count grid (row 0 = top):")
+    for r in range(GRID_SIZE):
+        print(" ".join(f"{grid[r, c]:3d}" for c in range(GRID_SIZE)))
+
+
+def mode_cell_and_fraction(counts):
+    """Get mode cell and fraction of particles."""
+    mode_cell = max(counts.keys(), key=lambda c: counts[c])
+    mode_count = counts[mode_cell]
+    frac = mode_count / NUM_PARTICLES
+    return mode_cell, mode_count, frac
+
+
+def print_maze_walls():
+    """Print the wall configuration for each cell."""
+    print("Wall configuration (N,E,S,W for each cell):")
+    for r in range(GRID_SIZE):
+        row_vals = []
+        for c in range(GRID_SIZE):
+            cell = rc_to_cell(r, c)
+            N, E, S, W = MAZE_MAP[cell]
+            row_vals.append(f"{N}{E}{S}{W}")
+        print(" | ".join(row_vals))
+    print()
+
+
+# ============== AUTONOMOUS DRIVING ==============
+def execute_turn(robot: HamBot, cmd: str):
+    """Execute a 90-degree turn."""
+    if cmd == "R":
+        robot.set_left_motor_speed(TURN_RPM)
+        robot.set_right_motor_speed(-TURN_RPM)
+    else:
+        robot.set_left_motor_speed(-TURN_RPM)
+        robot.set_right_motor_speed(TURN_RPM)
+    time.sleep(1.25)  # Tune for 90 degrees
+    robot.set_left_motor_speed(0.0)
+    robot.set_right_motor_speed(0.0)
+    time.sleep(0.2)
+
+
+def do_forward_one_cell(robot: HamBot):
     """
-    Rotate the robot by ±90° using IMU feedback.
-    direction: "left" (CCW) or "right" (CW)
+    Move forward one cell with encoder tracking, drift correction,
+    side-centering, and diagonal obstacle detection.
     """
-    ROTATE_RPM = 24.0
-    ROTATE_MIN_RPM = 6.0
-    DT_ROTATE = 0.05
-    target_deg = 90.0
-    sign = -1 if direction == "left" else +1  # left turn = CCW
-    start = bot.get_heading(blocking=True, wait_timeout=0.5)
-    if start is None:
-        return
-    total_rotated = 0.0
-    last_heading = start
-    while total_rotated < target_deg - 2.0:
-        cur = bot.get_heading()
-        if cur is not None:
-            delta = (cur - last_heading + 180) % 360 - 180
-            total_rotated += abs(delta)
-            last_heading = cur
-        remaining = max(0.0, target_deg - total_rotated)
-        scale = max(ROTATE_MIN_RPM / ROTATE_RPM, min(1.0, remaining / target_deg))
-        rpm = ROTATE_RPM * scale
-        bot.set_left_motor_speed(sign * rpm)
-        bot.set_right_motor_speed(-sign * rpm)
-        time.sleep(DT_ROTATE)
-    bot.set_left_motor_speed(0.0)
-    bot.set_right_motor_speed(0.0)
+    if not hasattr(do_forward_one_cell, "slowing"):
+        do_forward_one_cell.slowing = False
+    if not hasattr(do_forward_one_cell, "fld_hits"):
+        do_forward_one_cell.fld_hits = 0
+    if not hasattr(do_forward_one_cell, "frd_hits"):
+        do_forward_one_cell.frd_hits = 0
+
+    # Reset encoders if available
+    try:
+        robot.reset_encoders()
+    except:
+        pass
+
+    start_time = time.time()
+    aborted_reason = None
+    avg_rad = 0.0
+
+    while True:
+        # Try to get encoder readings
+        try:
+            l_rad, r_rad = robot.get_encoder_readings()
+            avg_rad = (abs(l_rad) + abs(r_rad)) / 2.0
+            if avg_rad >= RAD_PER_CELL:
+                break
+        except:
+            # Fallback to time-based if no encoders
+            if time.time() - start_time > 2.0:
+                break
+
+        if time.time() - start_time > MAX_FWD_TIME_S:
+            print("WARN: forward move timeout hit.")
+            aborted_reason = "timeout"
+            break
+
+        scan = robot.get_range_image()
+        if scan == -1:
+            print("WARN: LIDAR unavailable during forward.")
+            aborted_reason = "lidar"
+            break
+
+        d_front = median_sector(scan, 180)
+        d_left = median_sector(scan, 90)
+        d_right = median_sector(scan, 270)
+        d_fld = median_sector(scan, FRONT_LEFT_DIAG_DEG)
+        d_frd = median_sector(scan, FRONT_RIGHT_DIAG_DEG)
+
+        # Emergency stop: front wall
+        if d_front is not None and d_front <= FRONT_STOP_M:
+            print("EMERGENCY STOP: front wall too close.")
+            aborted_reason = "front"
+            break
+
+        # Diagonal obstacle tracking
+        if d_fld is not None and d_fld <= FRONT_DIAG_STOP_M:
+            do_forward_one_cell.fld_hits += 1
+        else:
+            do_forward_one_cell.fld_hits = 0
+
+        if d_frd is not None and d_frd <= FRONT_DIAG_STOP_M:
+            do_forward_one_cell.frd_hits += 1
+        else:
+            do_forward_one_cell.frd_hits = 0
+
+        if do_forward_one_cell.fld_hits >= 2:
+            print("EMERGENCY STOP: front-left diag too close.")
+            aborted_reason = "diagL"
+            break
+        if do_forward_one_cell.frd_hits >= 2:
+            print("EMERGENCY STOP: front-right diag too close.")
+            aborted_reason = "diagR"
+            break
+
+        # Speed ramp
+        t = time.time() - start_time
+        ramp_frac = min(1.0, t / RAMP_TIME_S)
+        base = max(MIN_RAMP_RPM, FWD_RPM * ramp_frac)
+
+        # Drift correction (encoder-based)
+        drift_corr = 0.0
+        try:
+            l_rad, r_rad = robot.get_encoder_readings()
+            drift_err = (l_rad - r_rad)
+            drift_corr = ENC_KP * drift_err
+        except:
+            pass
+
+        # Side centering
+        side_corr = 0.0
+        if d_left is not None and d_right is not None:
+            side_err = d_left - d_right
+            side_corr = SIDE_KP * side_err
+
+        # Diagonal slowdown + steering
+        diag_corr = 0.0
+        diag_slow = 1.0
+        if d_fld is not None and d_frd is not None:
+            min_diag = min(d_fld, d_frd)
+
+            if do_forward_one_cell.slowing:
+                if min_diag > FRONT_DIAG_EXIT_M:
+                    do_forward_one_cell.slowing = False
+            else:
+                if min_diag < FRONT_DIAG_ENTER_M:
+                    do_forward_one_cell.slowing = True
+
+            if do_forward_one_cell.slowing:
+                diag_slow = max(0.7, min_diag / FRONT_DIAG_ENTER_M)
+
+            diag_err = d_fld - d_frd
+            diag_corr = (SIDE_KP * 0.8) * diag_err
+
+        total_corr = drift_corr + side_corr + diag_corr
+        base *= diag_slow
+
+        robot.set_left_motor_speed(base - total_corr)
+        robot.set_right_motor_speed(base + total_corr)
+
+        time.sleep(CTRL_DT)
+
+    robot.set_left_motor_speed(0.0)
+    robot.set_right_motor_speed(0.0)
+    time.sleep(0.2)
+
+    # Reset hit counters after any abort
+    if aborted_reason is not None:
+        do_forward_one_cell.fld_hits = 0
+        do_forward_one_cell.frd_hits = 0
+        do_forward_one_cell.slowing = False
+
+    # If aborted before 90% of cell, treat as NO MOVE
+    if aborted_reason is not None and avg_rad < 0.90 * RAD_PER_CELL:
+        return False, aborted_reason
+
+    return True, "ok"
+
+
+def choose_autonomous_command(z_robot: dict, last_cmd: str = None) -> str:
+    """Choose next command based on wall observations."""
+    front_clear = (z_robot["front"] == 0)
+    left_clear = (z_robot["left"] == 0)
+    right_clear = (z_robot["right"] == 0)
+
+    if front_clear:
+        return "F"
+
+    opts = []
+    if left_clear:
+        opts.append("L")
+    if right_clear:
+        opts.append("R")
+
+    if opts:
+        if last_cmd in opts and len(opts) > 1:
+            opts.remove(last_cmd)
+        return random.choice(opts)
+
+    return random.choice(["L", "R"])
+
+
+# ============== MAIN LOOP ==============
+def run_particle_filter():
+    print("Initializing HamBot...")
+    robot = HamBot(lidar_enabled=True, camera_enabled=False)
+    robot.max_motor_speed = 60
+    time.sleep(2.0)
+
+    print(f"\nInitialized particle filter:")
+    print(f"  Grid size: {GRID_SIZE}x{GRID_SIZE} = {GRID_SIZE ** 2} cells")
+    print(f"  Total particles: {NUM_PARTICLES}")
+    print(f"  Particles per cell: {NUM_PARTICLES // (GRID_SIZE ** 2)}")
+    print()
+    print_maze_walls()
+
+    particles = init_particles_even()
+    last_cmd = None
+    stable = 0
+
+    try:
+        step = 0
+        while True:
+            step += 1
+            print(f"\n{'=' * 20} FILTER STEP {step} {'=' * 20}")
+
+            # Observe for policy
+            _, z_robot = get_wall_observation(robot)
+            print(f"Robot observation: {z_robot}")
+
+            # Autonomous command
+            cmd = choose_autonomous_command(z_robot, last_cmd=last_cmd)
+            print(f"Autonomous command chosen: {cmd}")
+            last_cmd = cmd
+
+            # Execute physically and get ACTUAL cmd (with recovery)
+            if cmd == "F":
+                moved_full, reason = do_forward_one_cell(robot)
+
+                if moved_full:
+                    actual_cmd = "F"
+                else:
+                    # Recovery turn based on what blocked us
+                    if reason == "diagR":
+                        recovery_turn = "L"
+                    elif reason == "diagL":
+                        recovery_turn = "R"
+                    elif reason == "front":
+                        recovery_turn = random.choice(["L", "R"])
+                    else:
+                        recovery_turn = None
+
+                    if recovery_turn is not None:
+                        execute_turn(robot, recovery_turn)
+                        actual_cmd = recovery_turn
+                        last_cmd = recovery_turn
+                    else:
+                        actual_cmd = "S"
+            else:
+                execute_turn(robot, cmd)
+                actual_cmd = cmd
+
+            print(f"Actual command executed: {actual_cmd}")
+
+            # PF prediction with ACTUAL cmd
+            particles = motion_update(particles, actual_cmd)
+
+            # PF correction with majority voting
+            obs = get_wall_observation_majority(robot, samples=3)
+            print(f"Observation (majority): N={obs[0]}, E={obs[1]}, S={obs[2]}, W={obs[3]}")
+            weights = sensor_update(particles, obs)
+
+            # Resample
+            particles = resample_particles(particles, weights)
+
+            # Report
+            grid, counts = particle_counts_grid(particles)
+            print_grid(grid)
+
+            mode_cell, mode_count, frac = mode_cell_and_fraction(counts)
+            print(f"\nMode cell estimate: {mode_cell} with {mode_count}/{NUM_PARTICLES} "
+                  f"particles ({frac * 100:.1f}%)")
+            print(f"Converged? {'YES' if frac >= 0.80 else 'NO'}")
+
+            # Stable convergence check
+            if frac >= 0.80:
+                stable += 1
+            else:
+                stable = 0
+
+            if stable >= STABLE_CONV_STEPS:
+                print(f"\n{'*' * 50}")
+                print(f"SUCCESS: ≥80% for {STABLE_CONV_STEPS} consecutive steps!")
+                print(f"Robot localized in cell {mode_cell}!")
+                print(f"{'*' * 50}")
+                break
+
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.")
+    finally:
+        print("\nShutting down HamBot...")
+        robot.set_left_motor_speed(0.0)
+        robot.set_right_motor_speed(0.0)
 
 
 if __name__ == "__main__":
-    # Build the 4x4 maze map and PF
-    maze_map = build_4x4_map()
-    pf = ParticleFilterGrid(maze_map, grid_size=GRID_SIZE, n_particles=NUM_PARTICLES)
-
-    print(f"Initialized particle filter:")
-    print(f"  Grid size: {GRID_SIZE}x{GRID_SIZE} = {GRID_SIZE**2} cells")
-    print(f"  Total particles: {NUM_PARTICLES}")
-    print(f"  Particles per cell: {NUM_PARTICLES // (GRID_SIZE**2)}")
-    print()
-    pf.print_maze_walls()
-
-    # --- Live robot loop: tune these values to your robot ---
-    bot = HamBot(lidar_enabled=True, camera_enabled=False)
-    bot.max_motor_speed = 60
-    DRIVE_RPM = 30.0        # forward driving speed
-    CELL_MOVE_TIME = 2.0    # max time to move one cell (seconds)
-    FRONT_STOP_MM = 250     # stop when front obstacle is this close (mm)
-    DT = 0.03               # control loop timestep
-
-    def move_forward_one_cell():
-        """Move forward one cell using LIDAR feedback to avoid walls."""
-        start_time = time.time()
-        while time.time() - start_time < CELL_MOVE_TIME:
-            scan = bot.get_range_image()
-            if scan != -1:
-                # Check front distance (around 180 degrees)
-                front_window = [d for d in scan[175:185] if d and d > 0]
-                if front_window:
-                    front_dist = min(front_window)
-                    if front_dist <= FRONT_STOP_MM:
-                        break  # Wall ahead, stop
-            bot.set_left_motor_speed(DRIVE_RPM)
-            bot.set_right_motor_speed(DRIVE_RPM)
-            time.sleep(DT)
-        bot.set_left_motor_speed(0.0)
-        bot.set_right_motor_speed(0.0)
-        time.sleep(0.2)  # Let robot settle
-
-    def turn_left():
-        rotate_90(bot, direction="left")
-
-    def turn_right():
-        rotate_90(bot, direction="right")
-
-    # Replace with your desired route; each action triggers PF predict/correct/resample
-    ACTION_SCRIPT = ["forward", "right", "forward", "left", "forward"]
-
-    try:
-        for action in ACTION_SCRIPT:
-            executed_action = action
-            if action == "forward":
-                prob_wall = pf.prob_front_wall()
-                if prob_wall > 0.6:
-                    print(f"Predicted wall ahead with prob {prob_wall:.2f}, turning right instead of forward.")
-                    turn_right()
-                    executed_action = "right"
-                else:
-                    move_forward_one_cell()
-            elif action == "left":
-                turn_left()
-            elif action == "right":
-                turn_right()
-            else:
-                raise ValueError(f"Unknown action: {action}")
-
-            obs = observe_walls_from_lidar(bot)
-            print(f"Action executed: {executed_action}, Observation: {obs}")
-            mode_cell, localized = pf.step(executed_action, obs)
-            if localized:
-                print(f"*** Localization achieved in cell {mode_cell}! ***")
-                break
-    finally:
-        bot.set_left_motor_speed(0.0)
-        bot.set_right_motor_speed(0.0)
+    run_particle_filter()
