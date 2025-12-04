@@ -333,13 +333,13 @@ def execute_turn(robot, cmd):
     else:
         target_heading = normalize_angle(start_heading - 90)
     
-    # Start turning
+    # Start turning (swapped to match heading direction)
     if cmd == "R":
-        robot.set_left_motor_speed(TURN_RPM)
-        robot.set_right_motor_speed(-TURN_RPM)
-    else:
         robot.set_left_motor_speed(-TURN_RPM)
         robot.set_right_motor_speed(TURN_RPM)
+    else:
+        robot.set_left_motor_speed(TURN_RPM)
+        robot.set_right_motor_speed(-TURN_RPM)
     
     start_time = time.time()
     
